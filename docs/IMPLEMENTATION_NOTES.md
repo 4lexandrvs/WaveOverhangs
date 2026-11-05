@@ -28,7 +28,8 @@ The Python implementation retains attribution and is distributed under AGPL-3.0-
 - Process internal fill surfaces only; top/bottom skin and bridge surfaces remain under OrcaSlicer's native strategy.
 - Determine overhang geometry as current fill surface minus the lower layer's merged slices.
 - Form an anchor band by intersecting the overhang with an expanded lower-layer region (default reach 0.55 mm to account for the fill inset from external walls).
-- Propagate fronts by repeated polygon offsets at the configured wave spacing, clipped to the overhang.
+- Split narrow wave-cover necks by an erosion/regrowth topology pass (default minimum width 0.70 mm), keeping resulting cores separate and leaving removed neck material to ordinary infill.
+- Propagate fronts independently in each resulting component by repeated polygon offsets at the configured wave spacing, clipped to that component.
 - Clip generated contour segments to an inset boundary so paths do not run directly along the overhang edge.
 - Return the final accumulated envelope as covered geometry.
 - Subtract that envelope from the original fill surface before normal infill generation.
@@ -37,7 +38,7 @@ The Python implementation retains attribution and is distributed under AGPL-3.0-
 ### Not yet ported from the full reference implementation
 
 - Smart bridgeability heuristics and bridge-aware region selection.
-- Narrow-neck detection and split slits.
+- Reference-style closest-boundary slit construction (currently approximated by morphology-based erosion/regrowth; exact slit geometry is not yet ported).
 - ZigZag path joining and Smart path orientation.
 - Corner-aware spacing taper.
 - All reference tuning parameters and exact C++ geometry helpers.
