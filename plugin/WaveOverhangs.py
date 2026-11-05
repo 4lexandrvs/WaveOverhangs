@@ -208,7 +208,7 @@ _DEFAULTS = {
     "enabled": False,
     "line_spacing_mm": 0.35,
     "line_width_mm": 0.42,
-    "seed_reach_mm": 0.12,
+    "seed_reach_mm": 0.55,
     "max_iterations": 160,
     "min_area_growth_mm2": 0.01,
     "filament_diameter_mm": 1.75,
