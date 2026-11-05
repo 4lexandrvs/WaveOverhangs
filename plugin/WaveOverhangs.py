@@ -550,10 +550,10 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                 for surface in surfaces:
                     surface_type = surface.surface_type
                     subject = surface.expolygon
-                    # The first port targets internal fill only. Bottom/bridge/top
-                    # skin surfaces retain OrcaSlicer's native strategy until the
-                    # reference bridgeability and surface-role rules are ported.
-                    if not surface.is_internal():
+                    # is_internal() is also true for stInternalBridge. Explicitly
+                    # exclude bridge surfaces so Orca's native bridge pipeline keeps
+                    # ownership of them until smart bridgeability is ported.
+                    if not surface.is_internal() or surface.is_bridge():
                         grouped.append((
                             surface_type,
                             [orca.host.ExPolygon(subject.contour, list(subject.holes))]
