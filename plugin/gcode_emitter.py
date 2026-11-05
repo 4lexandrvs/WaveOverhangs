@@ -6,12 +6,12 @@ for clipping ordinary infill and supplying the exact layer heights.
 import math
 import re
 
-_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE\\s*$")
-_LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\\s*$")
-_E_MODE = re.compile(r"^\\s*M(82|83)(?:\\s|$)", re.IGNORECASE)
-_VOLUMETRIC = re.compile(r"^\\s*M200(?:\\s|$)", re.IGNORECASE)
-_E_VALUE = re.compile(r"(?:^|\\s)E([-+0-9.eE]+)(?:\\s|$)", re.IGNORECASE)
-_TOOL_CHANGE = re.compile(r"^\\s*T[1-9][0-9]*(?:\\s|$)", re.IGNORECASE)
+_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE\s*$")
+_LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\s*$")
+_E_MODE = re.compile(r"^\s*M(82|83)(?:\s|$)", re.IGNORECASE)
+_VOLUMETRIC = re.compile(r"^\s*M200(?:\s|$)", re.IGNORECASE)
+_E_VALUE = re.compile(r"(?:^|\s)E([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
+_TOOL_CHANGE = re.compile(r"^\s*T[1-9][0-9]*(?:\s|$)", re.IGNORECASE)
 
 
 def _fmt(value):
@@ -43,10 +43,10 @@ def _path_gcode(path, width, height, filament_diameter, travel_speed, print_spee
 def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
                        filament_diameter=1.75, travel_speed=7200.0,
                        print_speed=1800.0, z_tolerance=0.015):
-    """Insert paths at exact layer markers; reject unsupported volumetric E.
+    """Insert paths at layer markers; reject modes not safely supported.
 
-    height_by_z is required for every emitted layer. The emitter intentionally
-    does not guess layer height or transform object coordinates into bed space.
+    Exact positive layer heights are mandatory. In absolute-E mode the emitter
+    restores the pre-insertion E coordinate with G92 after its relative moves.
     """
     if not paths_by_z:
         return gcode_text, 0
@@ -56,15 +56,31 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
     insertions = {}
     layer_start = None
     e_mode = "absolute"
+    absolute_e = 0.0
+
     for index, line in enumerate(lines):
-        if _VOLUMETRIC.match(line):
+        command = line.split(";", 1)[0].strip()
+        if _VOLUMETRIC.match(command):
             raise ValueError("Wave Overhangs: volumetric extrusion (M200) is not supported")
-        mode_match = _E_MODE.match(line)
+        if _TOOL_CHANGE.match(command):
+            raise ValueError("Wave Overhangs: multiple-tool G-code is not supported")
+
+        mode_match = _E_MODE.match(command)
         if mode_match:
             e_mode = "absolute" if mode_match.group(1) == "82" else "relative"
+
+        e_match = _E_VALUE.search(command)
+        if e_match:
+            value = float(e_match.group(1))
+            if command.upper().startswith("G92"):
+                absolute_e = value
+            elif command.upper().startswith(("G0", "G1", "G2", "G3")):
+                absolute_e = value if e_mode == "absolute" else absolute_e + value
+
         if _LAYER_CHANGE.match(line):
             layer_start = index
             continue
+
         z_match = _LAYER_Z.match(line)
         if z_match and layer_start is not None:
             active_z = float(z_match.group(1))
@@ -87,6 +103,7 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
                     ))
                 if e_mode == "absolute":
                     block.append("M82 ; Wave Overhangs: restore absolute extrusion")
+                    block.append("G92 E%s ; Wave Overhangs: restore absolute E coordinate" % _fmt(absolute_e))
                 insertions[index + 1] = block
             layer_start = None
 
@@ -101,5 +118,5 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
         if block:
             output.extend(block)
             inserted_paths += sum(1 for item in block if item == ";TYPE:Wave Overhangs")
-    ending = "\\n" if gcode_text.endswith("\\n") else ""
-    return "\\n".join(output) + ending, inserted_paths
+    ending = "\n" if gcode_text.endswith("\n") else ""
+    return "\n".join(output) + ending, inserted_paths
