@@ -8,9 +8,9 @@
 #   Reference: https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs
 # Licensed under AGPL-3.0-or-later. This Python adaptation retains attribution.
 #
-# This first Python port implements geometric wavefront propagation and its
-# covered-area result. Smart bridge selection, narrow-neck splitting, corner
-# tapering and ZigZag joining are deliberately not represented as implemented.
+# This standalone core implements geometric wavefront propagation, narrow-neck
+# splitting, and its covered-area result. Smart bridge selection, corner tapering
+# and ZigZag joining are deliberately not represented as implemented.
 
 import math
 
