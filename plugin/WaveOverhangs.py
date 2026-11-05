@@ -476,6 +476,15 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                 for surface in surfaces:
                     surface_type = surface.surface_type
                     subject = surface.expolygon
+                    # The first port targets internal fill only. Bottom/bridge/top
+                    # skin surfaces retain OrcaSlicer's native strategy until the
+                    # reference bridgeability and surface-role rules are ported.
+                    if not surface.is_internal():
+                        grouped.append((
+                            surface_type,
+                            [orca.host.ExPolygon(subject.contour, list(subject.holes))]
+                        ))
+                        continue
                     paths, covered = generate_wavefronts(
                         subject, lower_slices, spacing, width, seed_reach,
                         orca.host.Point, cfg["max_iterations"], min_area_growth
