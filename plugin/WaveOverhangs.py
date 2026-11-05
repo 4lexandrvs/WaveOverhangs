@@ -155,8 +155,6 @@ def _wave_expolygon(expolygon, lower_slices, cfg, scale):
     if expolygon.contour.size() < 3:
         return None
 
-    # Do not reshape tiny unsupported patches; they are usually numerical
-    # slivers or short transitions rather than useful overhang edges.
     unsupported_area = sum(poly.area() for poly in unsupported)
     if unsupported_area <= 0:
         return None
