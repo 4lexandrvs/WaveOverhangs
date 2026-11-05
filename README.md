@@ -42,7 +42,7 @@ The exact source revision reported by the diagnostic log (`af2ffb8c`) includes t
 
 This means a Python-only geometry prototype is possible, but a faithful Wave Overhangs implementation that creates custom wave extrusion paths needs an additional native integration point. See [docs/API_FINDINGS.md](docs/API_FINDINGS.md) for the source-level evidence and current decision gate.
 
-The current API probe is version 0.2.0. It puts its compact report into `ExecutionResult.message`, so the result is recorded in the main `debug_*.log` and does not depend on locating the separate Python stderr log. The slicing-pipeline capability must also be selected under **Process → Others → Slicing Pipeline Plugin** (Advanced mode) before its callback runs. The log line saying that the plugin has no registered printer-agent capabilities is normal for a plugin that does not implement a printer connection; it is not a general plugin-registration error.
+The current API probe is version 0.8.0. It writes detailed, read-only JSONL reports to `%APPDATA%\\OrcaSlicer\\log\\WaveOverhangs_API_Probe_0.8.0.jsonl` and puts a compact summary into `ExecutionResult.message`, which is recorded in the main `debug_*.log`. Version 0.8.0 inspects extrusion-path point coordinates, `Point.x` / `Point.y`, and the descriptors and returned containers of `entities` / `paths`. It does not mutate live slicing geometry. The slicing-pipeline capability must also be selected under **Process → Others → Slicing Pipeline Plugin** (Advanced mode) before its callback runs. The log line saying that the plugin has no registered printer-agent capabilities is normal for a plugin that does not implement a printer connection; it is not a general plugin-registration error.
 
 ## Current validation target
 
