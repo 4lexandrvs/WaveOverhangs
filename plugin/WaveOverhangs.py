@@ -32,7 +32,6 @@ import orca
 
 
 # Inlined engine: Orca loads a single-file plugin without adding its directory to sys.path.
-import math
 
 
 def _union(items):
@@ -224,6 +223,8 @@ _E_VALUE = re.compile(r"(?:^|\s)E([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
 _F_VALUE = re.compile(r"(?:^|\s)F([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
 _VOLUMETRIC = re.compile(r"^\s*M200(?:\s|$)", re.IGNORECASE)
 _TOOL_CHANGE = re.compile(r"^\s*T[1-9][0-9]*(?:\s|$)", re.IGNORECASE)
+_X_VALUE = re.compile(r"(?:^|\s)X([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
+_Y_VALUE = re.compile(r"(?:^|\s)Y([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
 
 
 def _config(capability):
@@ -284,6 +285,8 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
     absolute_e = 0.0
     last_feedrate = None
     relative_xyz = False
+    last_x = None
+    last_y = None
 
     for index, line in enumerate(lines):
         command = line.split(";", 1)[0].strip()
@@ -298,6 +301,13 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
             relative_xyz = False
         if relative_xyz and command:
             raise ValueError("Wave Overhangs: relative XY motion (G91) is not supported")
+        if upper.startswith(("G0", "G1", "G2", "G3")):
+            x_match = _X_VALUE.search(command)
+            y_match = _Y_VALUE.search(command)
+            if x_match:
+                last_x = float(x_match.group(1))
+            if y_match:
+                last_y = float(y_match.group(1))
 
         mode_match = _E_MODE.match(command)
         if mode_match:
@@ -325,6 +335,8 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
             paths = next((v for z, v in paths_by_z.items()
                           if abs(float(z) - active_z) <= 0.015), None)
             if paths:
+                if last_x is None or last_y is None:
+                    raise ValueError("Wave Overhangs: current XY position is unknown at layer marker")
                 height = next((v for z, v in heights_by_z.items()
                                if abs(float(z) - active_z) <= 0.015), None)
                 if height is None or float(height) <= 0:
@@ -341,6 +353,9 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
                 if e_mode == "absolute":
                     block.append("M82 ; Wave Overhangs: restore absolute extrusion")
                     block.append("G92 E%s ; Wave Overhangs: restore absolute E coordinate" % _fmt(absolute_e))
+                block.append("G0 X%s Y%s F%s ; Wave Overhangs: restore XY position" % (
+                    _fmt(last_x), _fmt(last_y), _fmt(cfg["travel_speed_mm_min"])
+                ))
                 if last_feedrate is not None:
                     block.append("G1 F%s ; Wave Overhangs: restore feedrate" % _fmt(last_feedrate))
                 insertions[index + 1] = block
@@ -457,6 +472,7 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                     continue
 
                 grouped = []
+                region_changed = False
                 for surface in surfaces:
                     surface_type = surface.surface_type
                     subject = surface.expolygon
@@ -475,19 +491,18 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                                 )
                                 for point in path
                             ])
-                        residual = []
-                        for piece in covered:
-                            residual.extend(subject.diff_ex(piece))
+                        residual = subtract_covered(subject, covered)
                         grouped.append((surface_type, residual))
                         generated_paths += len(paths)
                         changed_surfaces += 1
+                        region_changed = True
                     else:
                         grouped.append((
                             surface_type,
                             [orca.host.ExPolygon(subject.contour, list(subject.holes))]
                         ))
 
-                if changed_surfaces:
+                if region_changed:
                     _append_collection(collection, grouped)
 
             if not self._paths_by_z.get(z):
