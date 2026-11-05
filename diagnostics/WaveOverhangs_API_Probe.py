@@ -160,12 +160,51 @@ _OBJECT_ATTRS = (
 def _inspect_extrusion_entities(region_obj, attr_name):
     try:
         collection = _resolve_collection(region_obj, attr_name)
-        return _inspect_collection(
+        result = _inspect_collection(
             collection,
             ("role", "width", "height", "mm3_per_mm", "points", "paths"),
             attr_name,
             3,
         )
+        for entity_sample in result.get("sample", []):
+            try:
+                entity = collection[entity_sample["index"]]
+            except Exception:
+                continue
+            try:
+                paths = _resolve_collection(entity, "paths")
+            except Exception:
+                paths = None
+            if paths is not None:
+                entity_sample["path_collection"] = _inspect_collection(
+                    paths,
+                    ("role", "width", "height", "mm3_per_mm", "points"),
+                    "paths",
+                    3,
+                )
+            try:
+                points = _resolve_collection(entity, "points")
+            except Exception:
+                points = None
+            if points is not None:
+                entity_sample["point_collection"] = {
+                    "type": _safe_type(points),
+                    "length": _safe_length(points),
+                    "sample": [],
+                }
+                try:
+                    for point_index, point in enumerate(points):
+                        if point_index >= 5:
+                            break
+                        entity_sample["point_collection"]["sample"].append({
+                            "index": point_index,
+                            "type": _safe_type(point),
+                            "repr": _safe_repr(point, 180),
+                            "symbols": _safe_dir(point)[:30],
+                        })
+                except Exception as point_exc:
+                    entity_sample["point_collection"]["iteration_error"] = str(point_exc)
+        return result
     except Exception as exc:
         return {"access_error": "{}: {}".format(type(exc).__name__, exc)}
 
