@@ -36,6 +36,14 @@ A project to investigate and implement Wave Overhangs as an OrcaSlicer plugin fo
 
 The reference implementation is distributed under AGPL-3.0. Before incorporating or adapting its code, preserve the applicable copyright notices and comply with the license. The repository's license file and attribution will be added before redistributing derived implementation code.
 
+## Verified OrcaSlicer API findings
+
+The exact source revision reported by the diagnostic log (`af2ffb8c`) includes the Python slicing-pipeline capability. Python plugins can modify slice and fill surface geometry before toolpath generation. However, the exposed extrusion tree is read-only: the Python bindings do not provide operations to insert or replace extrusion paths.
+
+This means a Python-only geometry prototype is possible, but a faithful Wave Overhangs implementation that creates custom wave extrusion paths needs an additional native integration point. See [docs/API_FINDINGS.md](docs/API_FINDINGS.md) for the source-level evidence and current decision gate.
+
+The log line saying that the plugin has no registered printer-agent capabilities is normal for a plugin that does not implement a printer connection; it is not a general plugin-registration error.
+
 ## Current validation target
 
 - OS: Windows 10
