@@ -184,6 +184,58 @@ def _split_narrow_necks(region, minimum_width):
     return disjoint if len(disjoint) > 1 else [region]
 
 
+def _convex_hull_points(points):
+    """Monotonic-chain convex hull for scaled integer (x, y) points."""
+    unique = sorted(set((int(x), int(y)) for x, y in points))
+    if len(unique) <= 1:
+        return unique
+
+    def cross(o, a, b):
+        return ((a[0] - o[0]) * (b[1] - o[1]) -
+                (a[1] - o[1]) * (b[0] - o[0]))
+
+    lower = []
+    for point in unique:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+    upper = []
+    for point in reversed(unique):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    return lower[:-1] + upper[:-1]
+
+
+def _anchor_hull_expolygon(anchor_regions):
+    """Build an Orca ExPolygon around the convex hull of anchor contours."""
+    points = []
+    for region in anchor_regions:
+        points.extend((int(point.x), int(point.y))
+                      for point in region.contour.points)
+    hull_points = _convex_hull_points(points)
+    if len(hull_points) < 3:
+        return []
+    polygon = orca.host.Polygon()
+    for x, y in hull_points:
+        polygon.append(orca.host.Point(x, y))
+    return [orca.host.ExPolygon(polygon, [])]
+
+
+def _smart_bridgeability_allows(overhang, anchor_regions):
+    # Hole-bearing overhangs always receive waves in the reference algorithm.
+    if any(list(piece.holes) for piece in overhang):
+        return True
+    hull = _anchor_hull_expolygon(anchor_regions)
+    if not hull:
+        return False
+    overhang_area = _area(overhang)
+    if overhang_area <= 0:
+        return False
+    outside_hull_area = _area(_difference(overhang, hull))
+    return outside_hull_area / overhang_area <= 0.20
+
+
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
                         min_area_growth=0.0, minimum_wave_width=0):
@@ -214,7 +266,7 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     for original_piece in overhang:
         for wave_piece in _split_narrow_necks(original_piece, minimum_wave_width):
             seeds = _intersection([wave_piece], expanded_lower)
-            if not seeds:
+            if not seeds or not _smart_bridgeability_allows([wave_piece], seeds):
                 continue
             trim_region = list(wave_piece.offset(-trim_distance))
             if not trim_region:
