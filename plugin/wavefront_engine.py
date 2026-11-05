@@ -241,6 +241,9 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
 
     # Seed from the strip of the overhang adjacent to material in the layer below.
     expanded_lower = _offset_union(lower_union, seed_reach)
+    # Approximate the reference's tiny source-contour expansion (<= 0.05 mm).
+    seed_epsilon = max(1, min(int(round(float(spacing) * 0.25)),
+                              int(round(float(seed_reach) * 0.05))))
     trim_distance = max(1, int(round(line_width * 0.5)))
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
     paths = []
@@ -249,9 +252,17 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     for original_piece in overhang:
         wave_pieces = split_narrow_necks(original_piece, minimum_wave_width)
         for wave_piece in wave_pieces:
-            seeds = _intersection([wave_piece], expanded_lower)
-            if not seeds:
+            # Start from a narrow band around the expanded-anchor contour,
+            # approximating the reference's open ClipperZ wave seeds.
+            anchor_overlap = _intersection([wave_piece], expanded_lower)
+            if not anchor_overlap:
                 continue
+            eroded_anchors = _offset_union(expanded_lower, -2 * seed_epsilon)
+            inner_overlap = (_intersection([wave_piece], eroded_anchors)
+                             if eroded_anchors else [])
+            seeds = _difference(anchor_overlap, inner_overlap)
+            if not seeds:
+                seeds = anchor_overlap
             trim_region = list(wave_piece.offset(-trim_distance))
             if not trim_region:
                 continue
