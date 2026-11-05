@@ -1,7 +1,8 @@
 import unittest
 
 from plugin.wavefront_engine import (
-    _clip_ring_to_region, split_narrow_necks, smart_bridgeability_allows
+    _clip_ring_to_region, split_narrow_necks,
+    smart_bridgeability_allows, unsupported_boundary_projection_cost
 )
 
 
@@ -56,17 +57,39 @@ class FakeSurface:
 
 
 class WavefrontClippingTests(unittest.TestCase):
-    def test_smart_bridgeability_accepts_small_outside_hull_fraction(self):
-        self.assertTrue(smart_bridgeability_allows(100, 20, threshold=0.20))
+    def test_smart_bridgeability_area_metric_requires_at_least_twenty_percent(self):
+        self.assertFalse(smart_bridgeability_allows(100, 19.99))
+        self.assertTrue(smart_bridgeability_allows(100, 20.0))
 
-    def test_smart_bridgeability_rejects_large_outside_hull_fraction(self):
-        self.assertFalse(smart_bridgeability_allows(100, 20.01, threshold=0.20))
+    def test_smart_bridgeability_projection_metric_can_trigger_waves(self):
+        self.assertTrue(smart_bridgeability_allows(
+            100, 0, unsupported_distance=20, perimeter=100
+        ))
+
+    def test_smart_bridgeability_rejects_when_both_metrics_are_below_threshold(self):
+        self.assertFalse(smart_bridgeability_allows(
+            100, 19.99, unsupported_distance=19.99, perimeter=100
+        ))
 
     def test_smart_bridgeability_always_accepts_regions_with_holes(self):
-        self.assertTrue(smart_bridgeability_allows(100, 95, has_holes=True))
+        self.assertTrue(smart_bridgeability_allows(
+            100, 0, unsupported_distance=0, perimeter=100, has_holes=True
+        ))
 
     def test_smart_bridgeability_rejects_zero_area(self):
         self.assertFalse(smart_bridgeability_allows(0, 0))
+
+    def test_unsupported_boundary_projection_uses_best_candidate_normal(self):
+        # Two orthogonal unsupported edges have equal cost for either normal.
+        self.assertAlmostEqual(
+            unsupported_boundary_projection_cost([
+                (0, 0, 10, 0), (0, 0, 0, 10)
+            ]),
+            10.0
+        )
+
+    def test_unsupported_boundary_projection_returns_zero_without_edges(self):
+        self.assertEqual(unsupported_boundary_projection_cost([]), 0.0)
 
     def test_native_bridge_surfaces_are_not_wave_candidates(self):
         # Orca's Surface::is_internal() includes stInternalBridge.
