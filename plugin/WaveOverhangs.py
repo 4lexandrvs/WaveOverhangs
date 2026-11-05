@@ -8,20 +8,12 @@
 # version = "0.2.0-dev"
 # type = "slicing-pipeline"
 # ///
-"""
-Wave Overhangs — plugin integration scaffold for OrcaSlicer 2.5.0.
+"""Wave Overhangs plugin scaffold for OrcaSlicer 2.5.0.
 
-This is deliberately a contour-level prototype, not a port of the original
-WaveOverhangs extrusion-path generator. It detects unsupported portions of
-each layer contour (current slice minus the previous layer) and applies a
-sinusoidal displacement only to contour samples inside those portions.
-
-The result is written back through SurfaceCollection.set(); OrcaSlicer then
-generates the perimeter toolpaths normally.
-
-The original WaveOverhangs algorithm and its authorship are documented in
-docs/IMPLEMENTATION_NOTES.md. This prototype is an independent, deliberately
-smaller experiment and does not copy the original C++ implementation.
+The historical contour-deformation experiment below is retained for reference
+only and is disabled by default. It is not the wavefront extrusion algorithm.
+The production path is being implemented around posPrepareInfill geometry edits
+and psGCodePostProcess G-code injection.
 """
 import json
 import math
@@ -238,7 +230,7 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                 layer.make_slices()
 
         return orca.ExecutionResult.success(
-            "Wave Overhangs 0.1.0: reshaped {} surface(s) in {} region(s)".format(
+            "Wave Overhangs legacy contour experiment: reshaped {} surface(s) in {} region(s)".format(
                 changed_surfaces, changed_regions
             )
         )
