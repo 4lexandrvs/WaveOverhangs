@@ -240,6 +240,7 @@ _DEFAULTS = {
 
 _LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE\s*$")
 _LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\s*$")
+_Z_VALUE = re.compile(r"(?:^|\s)Z([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
 _E_MODE = re.compile(r"^\s*M(82|83)(?:\s|$)", re.IGNORECASE)
 _E_VALUE = re.compile(r"(?:^|\s)E([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
 _F_VALUE = re.compile(r"(?:^|\s)F([-+0-9.eE]+)(?:\s|$)", re.IGNORECASE)
