@@ -29,7 +29,7 @@ import os
 import re
 
 import orca
-from wavefront_engine import generate_wavefronts
+from wavefront_engine import generate_wavefronts, subtract_covered
 
 
 _DEFAULTS = {
