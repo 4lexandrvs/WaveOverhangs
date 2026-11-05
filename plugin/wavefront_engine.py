@@ -135,9 +135,44 @@ def _clip_ring_to_region(ring, clip_region, sample_step, point_factory):
     return paths
 
 
+
+def split_narrow_necks(region, minimum_width):
+    """Split a wave-cover region at necks narrower than minimum_width.
+
+    This is a morphology-based Python approximation of the reference slit
+    splitter: erode the region, keep the disconnected cores separate, then
+    regrow each core and clip it to the original region. The removed neck
+    material remains available to ordinary infill.
+    """
+    half_width = max(1, int(round(float(minimum_width) * 0.5)))
+    if half_width <= 1:
+        return [region]
+    cores = list(region.offset(-half_width))
+    if len(cores) <= 1:
+        return [region]
+
+    pieces = []
+    for core in cores:
+        for grown in core.offset(half_width):
+            pieces.extend(grown.intersection_ex(region))
+
+    # Keep components disjoint without a union operation that would reconnect
+    # them across a neck that the erosion deliberately separated.
+    disjoint = []
+    for piece in pieces:
+        pending = [piece]
+        for kept in disjoint:
+            next_pending = []
+            for candidate in pending:
+                next_pending.extend(candidate.diff_ex(kept))
+            pending = next_pending
+        disjoint.extend(pending)
+    return disjoint if len(disjoint) > 1 else [region]
+
+
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
-                        min_area_growth=0.0):
+                        min_area_growth=0.0, minimum_wave_width=0):
     """Generate anchored offset fronts for one fill surface.
 
     All geometric distances are in Orca scaled integer units. Returns
@@ -157,47 +192,45 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
 
     # Seed from the strip of the overhang adjacent to material in the layer below.
     expanded_lower = _offset_union(lower_union, seed_reach)
-    seeds = _intersection(overhang, expanded_lower)
-    if not seeds:
-        return [], []
-
-    # Keep generated fronts away from the physical overhang edge by half a line.
     trim_distance = max(1, int(round(line_width * 0.5)))
-    trim_region = []
-    for piece in overhang:
-        trim_region.extend(piece.offset(-trim_distance))
-    if not trim_region:
-        return [], []
-
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
-    accumulated = seeds
-    accumulated_area = _area(accumulated)
     paths = []
+    covered = []
 
-    for _ in range(max(1, int(max_iterations))):
-        grown = _offset_union(accumulated, spacing)
-        next_region = _intersection(grown, overhang)
-        if not next_region:
-            break
-
-        next_area = _area(next_region)
-        if next_area <= accumulated_area + max(0.0, float(min_area_growth)):
-            break
-
-        for piece in next_region:
-            for ring in [piece.contour] + list(piece.holes):
-                paths.extend(_clip_ring_to_region(
-                    ring, trim_region, sample_step, point_factory
-                ))
-
-        accumulated = next_region
-        accumulated_area = next_area
+    for original_piece in overhang:
+        wave_pieces = split_narrow_necks(original_piece, minimum_wave_width)
+        for wave_piece in wave_pieces:
+            seeds = _intersection([wave_piece], expanded_lower)
+            if not seeds:
+                continue
+            trim_region = list(wave_piece.offset(-trim_distance))
+            if not trim_region:
+                continue
+            accumulated = seeds
+            accumulated_area = _area(accumulated)
+            piece_paths = []
+            for _ in range(max(1, int(max_iterations))):
+                grown = _offset_union(accumulated, spacing)
+                next_region = _intersection(grown, [wave_piece])
+                if not next_region:
+                    break
+                next_area = _area(next_region)
+                if next_area <= accumulated_area + max(0.0, float(min_area_growth)):
+                    break
+                for piece in next_region:
+                    for ring in [piece.contour] + list(piece.holes):
+                        piece_paths.extend(_clip_ring_to_region(
+                            ring, trim_region, sample_step, point_factory
+                        ))
+                accumulated = next_region
+                accumulated_area = next_area
+            if piece_paths:
+                paths.extend(piece_paths)
+                covered.extend(accumulated)
 
     if not paths:
         return [], []
-
-    # The final accumulated wavefront envelope is removed from normal infill.
-    return paths, _union(accumulated)
+    return paths, _union(covered)
 
 
 def subtract_covered(subject, covered):
