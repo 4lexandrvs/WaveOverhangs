@@ -25,7 +25,6 @@ smaller experiment and does not copy the original C++ implementation.
 """
 import json
 import math
-import traceback
 
 import orca
 
@@ -36,7 +35,6 @@ _DEFAULTS = {
     "period_mm": 1.20,
     "sample_step_fraction": 0.125,
     "probe_mm": 0.04,
-    "min_segment_mm": 0.80,
 }
 
 
@@ -50,7 +48,7 @@ def _config(capability):
         cfg.update(raw)
     cfg["enabled"] = bool(cfg["enabled"])
     for key in ("amplitude_mm", "period_mm", "sample_step_fraction",
-                "probe_mm", "min_segment_mm"):
+                "probe_mm"):
         cfg[key] = float(cfg[key])
     if cfg["amplitude_mm"] < 0:
         cfg["amplitude_mm"] = 0.0
@@ -58,7 +56,6 @@ def _config(capability):
         cfg["period_mm"] = _DEFAULTS["period_mm"]
     cfg["sample_step_fraction"] = min(0.5, max(0.04, cfg["sample_step_fraction"]))
     cfg["probe_mm"] = max(0.0, cfg["probe_mm"])
-    cfg["min_segment_mm"] = max(0.0, cfg["min_segment_mm"])
     return cfg
 
 
@@ -136,6 +133,11 @@ def _wave_contour(contour, unsupported, amplitude, period, sample_step, probe):
     if not changed or out.size() < 3 or not out.is_valid():
         return None
     return out
+
+
+def _clone_expolygon(expolygon):
+    """Copy a live graph-owned ExPolygon before a collection mutation invalidates refs."""
+    return orca.host.ExPolygon(expolygon.contour, list(expolygon.holes))
 
 
 def _wave_expolygon(expolygon, lower_slices, cfg, scale):
@@ -216,7 +218,7 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                     original = surface.expolygon
                     replacement = _wave_expolygon(original, lower_slices, cfg, scale)
                     by_type.setdefault(surface.surface_type, []).append(
-                        replacement if replacement is not None else original
+                        replacement if replacement is not None else _clone_expolygon(original)
                     )
                     if replacement is not None:
                         region_changed = True
