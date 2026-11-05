@@ -302,6 +302,9 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
             relative_xyz = False
         if relative_xyz and command:
             raise ValueError("Wave Overhangs: relative XY motion (G91) is not supported")
+        if upper.startswith("G28"):
+            last_x = None
+            last_y = None
         if upper.startswith(("G0", "G1", "G2", "G3")):
             x_match = _X_VALUE.search(command)
             y_match = _Y_VALUE.search(command)
@@ -401,6 +404,7 @@ def _append_collection(collection, grouped):
 
 class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
     def __init__(self):
+        super().__init__()
         self._paths_by_z = {}
         self._heights_by_z = {}
         self._generation_message = "Wave Overhangs: no paths generated"
