@@ -1,6 +1,6 @@
 import unittest
 
-from plugin.wavefront_engine import _clip_ring_to_region
+from plugin.wavefront_engine import _clip_ring_to_region, split_narrow_necks
 
 
 class Point:
@@ -23,6 +23,24 @@ class Rect:
         return xmin <= point.x <= xmax and ymin <= point.y <= ymax
 
 
+
+class FakePiece:
+    def __init__(self, name, cores=None):
+        self.name = name
+        self.cores = cores or []
+
+    def offset(self, distance):
+        if distance < 0:
+            return self.cores
+        return [self]
+
+    def intersection_ex(self, other):
+        return [self]
+
+    def diff_ex(self, other):
+        return [] if self is other else [self]
+
+
 class WavefrontClippingTests(unittest.TestCase):
     def test_fully_inside_ring_keeps_original_vertices(self):
         ring = Ring([(0, 0), (100, 0), (100, 100), (0, 100)])
@@ -38,6 +56,17 @@ class WavefrontClippingTests(unittest.TestCase):
         for path in paths:
             for x, y in path:
                 self.assertLessEqual(x, 50)
+
+    def test_narrow_neck_split_keeps_eroded_cores_separate(self):
+        left = FakePiece("left")
+        right = FakePiece("right")
+        region = FakePiece("source", [left, right])
+        result = split_narrow_necks(region, 4)
+        self.assertEqual(result, [left, right])
+
+    def test_narrow_neck_split_falls_back_when_no_topology_change(self):
+        region = FakePiece("single", [FakePiece("single-core")])
+        self.assertEqual(split_narrow_necks(region, 4), [region])
 
     def test_too_small_rings_are_ignored(self):
         ring = Ring([(0, 0), (10, 0)])
