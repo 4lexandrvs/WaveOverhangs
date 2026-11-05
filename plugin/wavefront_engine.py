@@ -221,7 +221,8 @@ def smart_bridgeability_allows(overhang_area, outside_hull_area,
 
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
-                        min_area_growth=0.0, minimum_wave_width=0):
+                        min_area_growth=0.0, minimum_wave_width=0,
+                        seed_epsilon=None):
     """Generate anchored offset fronts for one fill surface.
 
     All geometric distances are in Orca scaled integer units. Returns
@@ -242,8 +243,10 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     # Seed from the strip of the overhang adjacent to material in the layer below.
     expanded_lower = _offset_union(lower_union, seed_reach)
     # Approximate the reference's tiny source-contour expansion (<= 0.05 mm).
+    if seed_epsilon is None:
+        seed_epsilon = int(round(float(seed_reach) * (0.05 / 0.55)))
     seed_epsilon = max(1, min(int(round(float(spacing) * 0.25)),
-                              int(round(float(seed_reach) * 0.05))))
+                              int(round(float(seed_epsilon)))))
     trim_distance = max(1, int(round(line_width * 0.5)))
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
     paths = []
