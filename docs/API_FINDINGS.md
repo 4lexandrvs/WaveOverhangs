@@ -72,7 +72,7 @@ is emitted by `NetworkAgentFactory::deregister_python_plugin()` when a plugin is
 Source:
 - [NetworkAgentFactory.cpp at af2ffb8c](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/Utils/NetworkAgentFactory.cpp)
 
-The main session log did not contain the probe's custom markers. That alone does not prove the script did not run: the official plugin documentation routes Python `print()` output and tracebacks to a separate `python_*.log` file.
+The original probe version 0.1.0 used `print()` for its report, so the report went to the separate `python_*.log` stream. Version 0.2.0 now also embeds the compact JSON report in `orca.ExecutionResult.success(message)`. In this source revision, the Script capability's completion message is recorded in the main debug log, and non-empty success/skipped messages from slicing-pipeline capabilities are explicitly logged by `PluginHooks.cpp`. The main debug log can therefore be used to retrieve both reports without depending on the separate Python stderr file.
 
 ## 6. Next runtime check
 
@@ -84,4 +84,4 @@ A new minimal `Plugin_Load_Probe.py` is provided separately. It deliberately imp
 3. capability `on_load()`;
 4. manual `execute()`.
 
-Install this single `.py` file as a local plugin through OrcaSlicer's Plugins window, confirm the capability appears, and click Run. Then collect the corresponding `python_*.log` file from `data_dir()/log/` and, if the plugin is not shown or reports an error, the Plugins dialog's Diagnostics details as well.
+Install `diagnostics/WaveOverhangs_API_Probe.py` version 0.2.0 as a local plugin through OrcaSlicer's Plugins window. Confirm that both capabilities are present and enabled. Run the Script capability manually from **File → Plugins**; its `[WAVE_OVERHANGS_API_PROBE]` record should appear in the main `debug_*.log`. Then select **Wave Overhangs Pipeline Probe** under **Process → Others → Slicing Pipeline Plugin** (Advanced mode), slice a small model, and look for `[WAVE_OVERHANGS_PIPELINE_PROBE]` records in the same main log. The pipeline capability is not invoked merely because the package is installed or enabled: it must be selected in the active process preset. If the plugin is not shown or reports an error, collect the Plugins dialog's Diagnostics details.
