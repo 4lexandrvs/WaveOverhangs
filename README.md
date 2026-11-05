@@ -2,7 +2,7 @@
 
 A project to investigate and implement Wave Overhangs as an OrcaSlicer plugin for the **Windows 10 / OrcaSlicer 2.5.0 Release** environment.
 
-> **Status: bootstrap / API validation.** No Wave Overhangs geometry generation is implemented yet. The first milestone is to verify the exact plugin and slicing-pipeline APIs exposed by the official OrcaSlicer 2.5.0 build. We will not claim native path modification until it is demonstrated in that build.
+> **Status: experimental geometry prototype 0.1.0.** A Python slicing-pipeline plugin now applies a sinusoidal contour displacement to unsupported perimeter sections before normal perimeter generation. This is an early contour-level approximation, not yet the original Wave Overhangs extrusion-path algorithm.
 
 ## Goals
 
@@ -11,12 +11,13 @@ A project to investigate and implement Wave Overhangs as an OrcaSlicer plugin fo
 - Keep the workflow compatible with an unmodified OrcaSlicer 2.5.0 Release installation if technically possible.
 - Clearly separate native geometry integration from any G-code post-processing fallback.
 
-## Technical decision gate
+## Current implementation
 
-1. Inspect the Python plugin API and runtime objects available in OrcaSlicer 2.5.0.
-2. Determine whether the slicing pipeline exposes writable layer, region, and extrusion-path data.
-3. If it does, implement and test geometry generation through those supported interfaces.
-4. If it does not, document the smallest required native bridge and its build/deployment implications. A G-code post-processor may be evaluated as a fallback, but it is not equivalent to native geometry integration.
+- `plugin/WaveOverhangs.py` — first contour-level geometry prototype. It detects unsupported contour sections and adds a sinusoidal displacement before perimeter generation.
+- `diagnostics/` — read-only API probes retained as development evidence; no further broad probing is planned.
+- `docs/IMPLEMENTATION_NOTES.md` — algorithm boundary, prototype behavior, and next milestone.
+
+The reference implementation emits open wavefront extrusion paths. The Python plugin API can modify slice geometry but cannot currently insert arbitrary extrusion entities. The present prototype is therefore an experimental approximation; exact parity may require a small native extrusion-path integration point.
 
 ## Planned layout
 
@@ -47,5 +48,5 @@ The current API probe is version 0.9.0. It writes detailed, read-only JSONL repo
 ## Current validation target
 
 - OS: Windows 10
-- Slicer: OrcaSlicer 2.5.0 Release
-- First deliverable: a diagnostic plugin that reports the actual runtime API without modifying a print.
+- Slicer: OrcaSlicer 2.5.0 Release (`af2ffb8c`)
+- Current deliverable: contour-level geometry prototype 0.1.0; test on a disposable model before production use.
