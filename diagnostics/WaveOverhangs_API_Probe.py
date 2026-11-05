@@ -5,7 +5,7 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.8.0"
+# version = "0.9.0"
 # ///
 
 import inspect
@@ -262,6 +262,83 @@ def _inspect_value_accessor(owner, attr_name, item_attrs=(), sample_limit=4):
                 "access_error": "{}: {}".format(type(exc).__name__, exc)}
 
 
+def _inspect_method_api(owner, method_name):
+    """Inspect a method's existence and binding metadata without calling it."""
+    try:
+        method = getattr(owner, method_name)
+    except Exception as exc:
+        return {"available": False, "error": "{}: {}".format(type(exc).__name__, exc)}
+    result = {
+        "available": True,
+        "type": _safe_type(method),
+        "callable": callable(method),
+        "doc": _safe_repr(getattr(method, "__doc__", None), 900),
+    }
+    if callable(method):
+        try:
+            result["signature"] = str(inspect.signature(method))
+        except Exception as exc:
+            result["signature_error"] = "{}: {}".format(type(exc).__name__, exc)
+    return result
+
+
+def _inspect_surface_collection(region_obj, attr_name):
+    """Inspect mutable surface APIs, but never call a mutating method."""
+    try:
+        collection = getattr(region_obj, attr_name)
+    except Exception as exc:
+        return {"access_error": "{}: {}".format(type(exc).__name__, exc)}
+
+    result = {
+        "collection": _inspect_object(
+            collection,
+            ("size", "empty", "clear", "set_type", "set", "append",
+             "has", "filter_by_type", "surfaces")
+        ),
+        "safe_read_calls": {
+            "size": _inspect_callable_api(collection, "size"),
+            "empty": _inspect_callable_api(collection, "empty"),
+        },
+        "method_api": {
+            name: _inspect_method_api(collection, name)
+            for name in ("clear", "set_type", "set", "append", "has", "filter_by_type")
+        },
+        "surfaces": [],
+    }
+    try:
+        surfaces = getattr(collection, "surfaces")
+        result["surfaces_type"] = _safe_type(surfaces)
+        result["surfaces_length"] = _safe_length(surfaces)
+        result["surfaces_symbols"] = _safe_dir(surfaces)[:60]
+        for index, surface in enumerate(surfaces[:3]):
+            item = {
+                "index": index,
+                "surface": _inspect_object(
+                    surface,
+                    ("surface_type", "thickness", "bridge_angle",
+                     "extra_perimeters", "expolygon")
+                ),
+            }
+            try:
+                expolygon = surface.expolygon
+                item["expolygon"] = _inspect_object(
+                    expolygon,
+                    ("area", "contains", "contour", "holes", "offset",
+                     "translate", "rotate", "scale", "union_ex", "diff_ex")
+                )
+                item["expolygon_method_api"] = {
+                    name: _inspect_method_api(expolygon, name)
+                    for name in ("offset", "translate", "rotate", "scale",
+                                 "union_ex", "diff_ex", "intersection_ex")
+                }
+            except Exception as exc:
+                item["expolygon_error"] = "{}: {}".format(type(exc).__name__, exc)
+            result["surfaces"].append(item)
+    except Exception as exc:
+        result["surfaces_error"] = "{}: {}".format(type(exc).__name__, exc)
+    return result
+
+
 def _inspect_extrusion_entities(region_obj, attr_name):
     try:
         collection = _resolve_collection(region_obj, attr_name)
@@ -344,6 +421,7 @@ def _inspect_layers(owner, attr_name, max_layers=2):
             sample = {
                 "index": index,
                 "item": _inspect_object(layer_obj, _LAYER_ATTRS),
+                "make_slices_api": _inspect_method_api(layer_obj, "make_slices"),
                 "nested_collections": {},
             }
             for nested_name in ("regions", "layer_regions", "perimeters", "fills",
@@ -368,6 +446,12 @@ def _inspect_layers(owner, attr_name, max_layers=2):
                                         region_obj, collection_name
                                     )
                                     for collection_name in ("perimeters", "fills")
+                                }
+                                region_sample["surface_collections"] = {
+                                    collection_name: _inspect_surface_collection(
+                                        region_obj, collection_name
+                                    )
+                                    for collection_name in ("slices", "fill_surfaces")
                                 }
                 except Exception as exc:
                     sample["nested_collections"][nested_name] = {
@@ -435,6 +519,21 @@ def _inspect_pipeline_geometry(ctx, step):
                         cls, ("x", "y", "points", "paths", "entities",
                               "role", "width", "height", "mm3_per_mm")
                     )
+                if type_name in ("SurfaceCollection", "Surface", "ExPolygon"):
+                    class_info["method_api"] = {
+                        name: _inspect_method_api(cls, name)
+                        for name in (
+                            ("size", "empty", "clear", "set_type", "set", "append",
+                             "has", "filter_by_type", "surfaces")
+                            if type_name == "SurfaceCollection" else
+                            ("area", "is_top", "is_bottom", "is_bridge", "is_internal",
+                             "is_external", "is_solid", "expolygon")
+                            if type_name == "Surface" else
+                            ("area", "contains", "contour", "holes", "offset",
+                             "translate", "rotate", "scale", "union_ex", "diff_ex",
+                             "intersection_ex")
+                        )
+                    }
     return result
 
 
@@ -454,7 +553,7 @@ def _result_message(marker, report, limit=11500):
 def _write_diagnostic_report(report, reset=False):
     """Write full JSONL diagnostics to the OS temporary directory."""
     path = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()),
-                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.8.0.jsonl")
+                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.9.0.jsonl")
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         mode = "w" if reset else "a"
@@ -469,7 +568,7 @@ def _write_diagnostic_report(report, reset=False):
 def _compact_log_summary(report, report_path, write_error):
     geometry = report.get("geometry_inspection", {})
     summary = {
-        "plugin_version": "0.8.0",
+        "plugin_version": "0.9.0",
         "step": report.get("step"),
         "context_type": report.get("context_type"),
         "print_type": report.get("print_type"),
@@ -514,7 +613,7 @@ class WaveOverhangsApiReport(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         report = {
             "plugin": "Wave Overhangs API Probe",
-            "plugin_version": "0.8.0",
+            "plugin_version": "0.9.0",
             "orca_version": _safe_getattr(orca, "__version__"),
             "orca_type": _safe_type(orca),
             "orca_module_symbols": _safe_dir(orca),
@@ -565,7 +664,7 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
             step_key = str(step)
             report = {
                 "plugin": "Wave Overhangs Pipeline Probe",
-                "plugin_version": "0.8.0",
+                "plugin_version": "0.9.0",
                 "context_type": _safe_type(ctx),
                 "step": step,
                 "context_symbols": _safe_dir(ctx),
