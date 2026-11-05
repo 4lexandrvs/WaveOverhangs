@@ -5,7 +5,7 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.4.1"
+# version = "0.5.0"
 # ///
 
 import inspect
@@ -157,6 +157,19 @@ _OBJECT_ATTRS = (
 )
 
 
+def _inspect_extrusion_entities(region_obj, attr_name):
+    try:
+        collection = _resolve_collection(region_obj, attr_name)
+        return _inspect_collection(
+            collection,
+            ("role", "width", "height", "mm3_per_mm", "points", "paths"),
+            attr_name,
+            3,
+        )
+    except Exception as exc:
+        return {"access_error": "{}: {}".format(type(exc).__name__, exc)}
+
+
 def _inspect_layers(owner, attr_name, max_layers=2):
     try:
         collection = _resolve_collection(owner, attr_name)
@@ -190,9 +203,21 @@ def _inspect_layers(owner, attr_name, max_layers=2):
                         continue
                     item_attrs = (_REGION_ATTRS if nested_name in ("regions", "layer_regions")
                                   else _PATH_ATTRS)
-                    sample["nested_collections"][nested_name] = _inspect_collection(
-                        candidate, item_attrs, nested_name, 2
-                    )
+                    inspected = _inspect_collection(candidate, item_attrs, nested_name, 2)
+                    sample["nested_collections"][nested_name] = inspected
+                    if nested_name in ("regions", "layer_regions"):
+                        for region_sample in inspected.get("sample", []):
+                            try:
+                                region_obj = candidate[region_sample["index"]]
+                            except Exception:
+                                region_obj = None
+                            if region_obj is not None:
+                                region_sample["extrusion_collections"] = {
+                                    collection_name: _inspect_extrusion_entities(
+                                        region_obj, collection_name
+                                    )
+                                    for collection_name in ("perimeters", "fills")
+                                }
                 except Exception as exc:
                     sample["nested_collections"][nested_name] = {
                         "access_error": str(exc)
@@ -262,8 +287,10 @@ def _result_message(marker, report, limit=11500):
 
 def _write_diagnostic_report(report, reset=False):
     """Write full JSONL diagnostics to the OS temporary directory."""
-    path = os.path.join(tempfile.gettempdir(), "WaveOverhangs_API_Probe_0.4.1.jsonl")
+    path = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()),
+                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.5.0.jsonl")
     try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         mode = "w" if reset else "a"
         with open(path, mode, encoding="utf-8") as stream:
             stream.write(json.dumps(report, ensure_ascii=False, separators=(",", ":"), default=str))
@@ -276,7 +303,7 @@ def _write_diagnostic_report(report, reset=False):
 def _compact_log_summary(report, report_path, write_error):
     geometry = report.get("geometry_inspection", {})
     summary = {
-        "plugin_version": "0.4.1",
+        "plugin_version": "0.5.0",
         "step": report.get("step"),
         "context_type": report.get("context_type"),
         "print_type": report.get("print_type"),
