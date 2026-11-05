@@ -1,52 +1,58 @@
 # WaveOverhangs for OrcaSlicer 2.5.0
 
-A project to investigate and implement Wave Overhangs as an OrcaSlicer plugin for the **Windows 10 / OrcaSlicer 2.5.0 Release** environment.
+A Python slicing-pipeline plugin for unmodified OrcaSlicer 2.5.0. The implementation is experimental and remains disabled by default until runtime G-code validation is complete.
 
-> **Status: experimental geometry prototype 0.1.0.** A Python slicing-pipeline plugin now applies a sinusoidal contour displacement to unsupported perimeter sections before normal perimeter generation. This is an early contour-level approximation, not yet the original Wave Overhangs extrusion-path algorithm.
+## Current development build: 0.3.0-dev
 
-## Goals
+The plugin now connects the two required pipeline stages:
 
-- Reproduce the Wave Overhangs behavior from the reference implementation.
-- Integrate with the official OrcaSlicer plugin system where its public API permits.
-- Keep the workflow compatible with an unmodified OrcaSlicer 2.5.0 Release installation if technically possible.
-- Clearly separate native geometry integration from any G-code post-processing fallback.
+- At posPrepareInfill it detects unsupported fill-surface regions, propagates anchored offset wavefronts, and subtracts the wave-covered envelope from ordinary infill geometry.
+- At psGCodePostProcess it injects the generated XY paths into the exported G-code at their layer Z values.
 
-## Current implementation
+The wavefront core is adapted from the original implementation by Janis A. Andersons, based on Steven McCulloch's arc-overhang algorithm and integrated into OrcaSlicer by Dennis Klappe:
+https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs
 
-- `plugin/WaveOverhangs.py` — first contour-level geometry prototype. It detects unsupported contour sections and adds a sinusoidal displacement before perimeter generation.
-- `diagnostics/` — read-only API probes retained as development evidence; no further broad probing is planned.
-- `docs/IMPLEMENTATION_NOTES.md` — algorithm boundary, prototype behavior, and next milestone.
+The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 
-The reference implementation emits open wavefront extrusion paths. The Python plugin API can modify slice geometry but cannot currently insert arbitrary extrusion entities. The present prototype is therefore an experimental approximation; exact parity may require a small native extrusion-path integration point.
+## Implemented in this development build
 
-## Planned layout
+- Anchoring band derived from the lower layer's geometry.
+- Repeated polygon-offset propagation at configurable wave spacing.
+- Wavefront path extraction and clipping to an inset overhang boundary.
+- Covered-area calculation and subtraction from fill_surfaces before infill generation.
+- Export-stage G-code insertion with layer-height matching.
+- Conservative checks for unsupported extrusion modes and print setups.
 
-- `plugin/` — plugin entry point and UI/settings.
-- `src/` — Wave Overhangs implementation.
-- `diagnostics/` — API probes and runtime reports.
-- `tests/` — geometry and integration tests.
-- `docs/` — design notes, compatibility matrix, and installation instructions.
+## Not yet implemented / not production-ready
+
+- Full Smart bridgeability heuristics.
+- Narrow-neck splitting, ZigZag joining, and corner-aware spacing taper from the reference.
+- Exact native polyline clipping; the Python port uses bounded segment sampling.
+- Full validation of all printer start/end scripts, firmware modes, pressure advance, and retraction behavior.
+- Multi-object, multi-instance, and multi-tool support.
+
+The current supported test envelope is one print object, one printable instance, one extruder, non-volumetric extrusion, and absolute XY motion. Unsupported cases are skipped or rejected rather than guessed.
+
+## Safety
+
+The feature is disabled by default. Enable it only for disposable test exports. Do not use this development build for a real print until the generated paths and modified G-code have been inspected and validated on a test model.
+
+Post-processed G-code is not reflected in OrcaSlicer's G-code preview.
+
+## Repository layout
+
+- plugin/WaveOverhangs.py — plugin entry point, geometry integration, and G-code post-processing.
+- plugin/wavefront_engine.py — standalone copy of the geometric core for development.
+- plugin/gcode_emitter.py — standalone G-code emitter helper.
+- tests/ — helper tests.
+- diagnostics/ — read-only API probes retained as development evidence.
+- docs/IMPLEMENTATION_NOTES.md — architecture, algorithm port status, and validation requirements.
 
 ## Reference implementations
 
-- [OrcaSlicer-WaveOverhangs](https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs)
-- [PrusaSlicer-WaveOverhangs](https://github.com/stmcculloch/PrusaSlicer-WaveOverhangs)
-- [OrcaSlicer plugin development documentation](https://www.orcaslicer.com/wiki/developer_reference/plugin_development/plugin_development)
+- https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs
+- https://github.com/stmcculloch/PrusaSlicer-WaveOverhangs
 
-## Licensing
+## License
 
-The reference implementation is distributed under AGPL-3.0. Before incorporating or adapting its code, preserve the applicable copyright notices and comply with the license. The repository's license file and attribution will be added before redistributing derived implementation code.
-
-## Verified OrcaSlicer API findings
-
-The exact source revision reported by the diagnostic log (`af2ffb8c`) includes the Python slicing-pipeline capability. Python plugins can modify slice and fill surface geometry before toolpath generation. However, the exposed extrusion tree is read-only: the Python bindings do not provide operations to insert or replace extrusion paths.
-
-This creates a potentially simpler Python-only route: modify the slice contours at `Step.posSlice`, then let OrcaSlicer generate ordinary perimeters and infill from the changed geometry. This is a real native geometry change, not G-code rewriting. It is not yet proven that the Wave Overhangs pattern can be represented this way without unacceptable side effects; that is the next prototype target. Direct insertion/replacement of arbitrary `ExtrusionPath` objects remains unavailable in the exposed Python bindings. See [docs/API_FINDINGS.md](docs/API_FINDINGS.md) for source-level evidence and the decision gate.
-
-The current API probe is version 0.9.0. It writes detailed, read-only JSONL reports to `%APPDATA%\\OrcaSlicer\\log\\WaveOverhangs_API_Probe_0.9.0.jsonl` and puts a compact summary into `ExecutionResult.message`, which is recorded in the main `debug_*.log`. In addition to the 0.8.0 extrusion-path inspection, version 0.9.0 inspects the runtime `SurfaceCollection` API, its mutator signatures, surface geometry and `ExPolygon` methods. It never calls mutators or changes live geometry. The slicing-pipeline capability must also be selected under **Process → Others → Slicing Pipeline Plugin** (Advanced mode) before its callback runs. The log line saying that the plugin has no registered printer-agent capabilities is normal for a plugin that does not implement a printer connection; it is not a general plugin-registration error.
-
-## Current validation target
-
-- OS: Windows 10
-- Slicer: OrcaSlicer 2.5.0 Release (`af2ffb8c`)
-- Current deliverable: contour-level geometry prototype 0.1.0; test on a disposable model before production use.
+AGPL-3.0-or-later. See LICENSE.
