@@ -372,8 +372,9 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
         if block:
             output.extend(block)
             count += sum(1 for item in block if item == ";TYPE:Wave Overhangs")
-    ending = "\n" if source.endswith("\n") else ""
-    return "\n".join(output) + ending, count
+    newline = "\r\n" if "\r\n" in source else "\n"
+    ending = newline if source.endswith(("\n", "\r")) else ""
+    return newline.join(output) + ending, count
 
 
 def _transform_xy(matrix, x_mm, y_mm):
@@ -399,7 +400,6 @@ def _append_collection(collection, grouped):
 
 class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
     def __init__(self):
-        super().__init__()
         self._paths_by_z = {}
         self._heights_by_z = {}
         self._generation_message = "Wave Overhangs: no paths generated"
