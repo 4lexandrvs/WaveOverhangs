@@ -25,8 +25,9 @@ The Python implementation retains attribution and is distributed under AGPL-3.0-
 
 ### Ported in the current development build
 
+- Process internal fill surfaces only; top/bottom skin and bridge surfaces remain under OrcaSlicer's native strategy.
 - Determine overhang geometry as current fill surface minus the lower layer's merged slices.
-- Form an anchor band by intersecting the overhang with an expanded lower-layer region.
+- Form an anchor band by intersecting the overhang with an expanded lower-layer region (default reach 0.55 mm to account for the fill inset from external walls).
 - Propagate fronts by repeated polygon offsets at the configured wave spacing, clipped to the overhang.
 - Clip generated contour segments to an inset boundary so paths do not run directly along the overhang edge.
 - Return the final accumulated envelope as covered geometry.
