@@ -8,9 +8,9 @@ import math
 import re
 
 
-_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE\\s*$")
-_LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\\s*$")
-_E_MODE = re.compile(r"^\\s*M(82|83)(?:\\s|$)", re.IGNORECASE)
+_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE\s*$")
+_LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\s*$")
+_E_MODE = re.compile(r"^\s*M(82|83)(?:\s|$)", re.IGNORECASE)
 
 
 def _fmt(value):
@@ -56,7 +56,6 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
     lines = gcode_text.splitlines()
     z_to_paths = [(float(z), list(paths)) for z, paths in paths_by_z.items()]
     insertions = {}
-    active_z = None
     layer_start = None
     e_mode = "absolute"
     for index, line in enumerate(lines):
@@ -65,7 +64,6 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
             e_mode = "absolute" if mode_match.group(1) == "82" else "relative"
         if _LAYER_CHANGE.match(line):
             layer_start = index
-            active_z = None
             continue
         z_match = _LAYER_Z.match(line)
         if z_match and layer_start is not None:
@@ -100,5 +98,5 @@ def inject_layer_paths(gcode_text, paths_by_z, width=0.42, height_by_z=None,
         if block:
             output.extend(block)
             inserted_paths += sum(1 for item in block if item == ";TYPE:Wave Overhangs")
-    ending = "\\n" if gcode_text.endswith("\\n") else ""
-    return "\\n".join(output) + ending, inserted_paths
+    ending = "\n" if gcode_text.endswith("\n") else ""
+    return "\n".join(output) + ending, inserted_paths
