@@ -59,7 +59,7 @@ Verified against source revision af2ffb8c:
 - Feature is disabled by default. Enable it only for disposable test exports.
 - Only one print object and one printable model instance are accepted.
 - Additional tools, volumetric extrusion (M200), and relative XY motion (G91) are rejected by the G-code emitter.
-- Exact layer heights and a known XY position at the layer marker are required.
+- Exact layer heights, a matching physical Z-axis move, and a known XY position at that move are required.
 - The emitter restores absolute E coordinates, XY position, and the previous feedrate after each inserted group.
 - The default filament diameter is 1.75 mm; it must be changed in plugin settings for a 2.85 mm filament system.
 - Post-processed G-code is not reflected in OrcaSlicer's G-code preview.
@@ -73,7 +73,8 @@ These restrictions are not a claim of production readiness. Do not print with th
 - The wavefront core is inlined in the entry point because OrcaSlicer's single-file plugin loader does not automatically add the plugin directory to Python's module search path.
 - plugin/wavefront_engine.py is a standalone copy of the geometric core for development/reference; the entry point currently uses its inlined version.
 - plugin/gcode_emitter.py is retained as an independently testable helper, while the plugin currently uses an inlined emitter to avoid sibling-module import assumptions.
-- tests/test_gcode_emitter.py tests the standalone helper; it does not yet exercise the inlined plugin emitter or Orca geometry integration.
+- tests/test_gcode_emitter.py tests the standalone helper; it does not yet exercise the inlined plugin emitter.
+- tests/test_wavefront_clipping.py covers the standalone polyline clipping helper. Neither test suite has been run in this environment, and neither substitutes for Orca runtime geometry validation.
 - No runtime test against OrcaSlicer has yet been completed.
 
 ## Next validation steps
