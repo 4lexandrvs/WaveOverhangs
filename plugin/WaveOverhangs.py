@@ -301,7 +301,8 @@ def _smart_bridgeability_allows(overhang, anchor_regions, spacing,
 
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
-                        min_area_growth=0.0, minimum_wave_width=0):
+                        min_area_growth=0.0, minimum_wave_width=0,
+                        seed_epsilon=1):
     """Generate anchored offset fronts for one fill surface.
 
     All geometric distances are in Orca scaled integer units. Returns
@@ -324,8 +325,7 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     # Match Algorithm::RegionExpansionParameters::build(): expand source
     # contours only enough to create a stable intersection with the overhang.
     seed_epsilon = max(1, min(int(round(spacing * 0.25)),
-                              int(round(0.05 * float(orca.slicing.scale_factor())
-                                        if hasattr(orca.slicing, "scale_factor") else spacing * 0.05))))
+                              int(round(float(seed_epsilon)))))
     trim_distance = max(1, int(round(line_width * 0.5)))
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
     paths = []
@@ -697,7 +697,8 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                     paths, covered = generate_wavefronts(
                         subject, lower_slices, spacing, width, seed_reach,
                         orca.host.Point, cfg["max_iterations"], min_area_growth,
-                        int(round(cfg["minimum_wave_width_mm"] * scale))
+                        int(round(cfg["minimum_wave_width_mm"] * scale)),
+                        int(round(0.05 * scale))
                     )
                     if paths:
                         # Transform from object coordinates to printer/world XY.
