@@ -54,10 +54,11 @@ Source:
 The Wave Overhangs algorithm generates wavefront polylines and uses them as extrusion toolpaths. The public Python API in `af2ffb8c` can alter slice and fill geometry before toolpath generation, but it does not expose writable extrusion-path/entity collections.
 
 Therefore:
-- A Python-only plugin can implement diagnostics and can prototype geometry-level transformations.
-- A Python-only plugin cannot directly reproduce the native Wave Overhangs operation of replacing/adding generated extrusion paths with controlled path attributes using the exposed bindings.
-- A geometry-only workaround would not be equivalent without proving that the ordinary perimeter/fill generator can produce the required wave paths and preserve the required flow, speed, cooling, and support behavior.
-- Exact native integration requires an additional host-side API/bridge that can insert generated extrusion entities at the correct slicing stage, or a change to OrcaSlicer's C++ core. This is not yet a final build decision; first we will validate the installed runtime and test the minimum safe pipeline hook.
+- A Python-only plugin can modify the native slice geometry before perimeter generation; this is explicitly supported by the bound `SurfaceCollection` mutators and the official sample.
+- A Python-only plugin still cannot directly insert or replace arbitrary generated extrusion paths through the current extrusion-tree bindings.
+- The first implementation experiment should be a geometry-level prototype at `Step.posSlice`: alter only the relevant overhang-facing contour segments so the normal perimeter generator produces the desired wave-shaped toolpaths.
+- This approach is viable only if it preserves the intended Wave Overhangs geometry, flow, speed, cooling, wall ordering, support and neighboring-layer behavior. Those properties must be tested; they must not be assumed.
+- A C++ bridge/core change is needed only if the required wave path cannot be expressed safely through slice geometry, or if exact per-path extrusion parameters/order require direct extrusion-entity control. Do not choose that route before the geometry prototype is evaluated.
 
 ## 5. Correct interpretation of the user's log
 
@@ -76,12 +77,8 @@ The original probe version 0.1.0 used `print()` for its report, so the report we
 
 ## 6. Next runtime check
 
-The existing `WaveOverhangs_API_Probe.py` defines a script capability and a slicing-pipeline capability in one module. Its source structure is consistent with the API in `af2ffb8c`.
+The current `WaveOverhangs_API_Probe.py` is version 0.9.0. It remains strictly read-only: it inspects `SurfaceCollection` mutator availability and signatures but never invokes `set()`, `append()`, `clear()`, `offset()`, or `make_slices()`.
 
-A new minimal `Plugin_Load_Probe.py` is provided separately. It deliberately imports only `orca` and registers only one Script capability. This isolates module import and capability registration from the slicing API. Its markers distinguish:
-1. module import;
-2. package registration;
-3. capability `on_load()`;
-4. manual `execute()`.
+Install the updated probe through OrcaSlicer's Plugins window. Select **Wave Overhangs Pipeline Probe** under **Process → Others → Slicing Pipeline Plugin** (Advanced mode), then slice a small model. The probe records `posSlice`, `posPerimeters`, and `posInfill` to `%APPDATA%\\OrcaSlicer\\log\\WaveOverhangs_API_Probe_0.9.0.jsonl`. The key evidence is the `surface_collections` section for `region.slices` and `region.fill_surfaces`, plus the `make_slices_api` and `ExPolygon.offset` metadata. No test geometry is changed.
 
-Install `diagnostics/WaveOverhangs_API_Probe.py` version 0.2.0 as a local plugin through OrcaSlicer's Plugins window. Confirm that both capabilities are present and enabled. Run the Script capability manually from **File → Plugins**; its `[WAVE_OVERHANGS_API_PROBE]` record should appear in the main `debug_*.log`. Then select **Wave Overhangs Pipeline Probe** under **Process → Others → Slicing Pipeline Plugin** (Advanced mode), slice a small model, and look for `[WAVE_OVERHANGS_PIPELINE_PROBE]` records in the same main log. The pipeline capability is not invoked merely because the package is installed or enabled: it must be selected in the active process preset. If the plugin is not shown or reports an error, collect the Plugins dialog's Diagnostics details.
+Send the `posSlice` and `posPerimeters` JSONL records first. If the runtime exposes the same methods as source revision `af2ffb8c`, the next step will be a separate, deliberately small geometry prototype. Do not use the probe to test mutation; mutation will be implemented only in that separate prototype and tested on a disposable model.
