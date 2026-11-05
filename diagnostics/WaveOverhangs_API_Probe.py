@@ -410,7 +410,7 @@ class WaveOverhangsApiReport(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         report = {
             "plugin": "Wave Overhangs API Probe",
-            "plugin_version": "0.4.1",
+            "plugin_version": "0.6.0",
             "orca_version": _safe_getattr(orca, "__version__"),
             "orca_type": _safe_type(orca),
             "orca_module_symbols": _safe_dir(orca),
@@ -461,7 +461,7 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
             step_key = str(step)
             report = {
                 "plugin": "Wave Overhangs Pipeline Probe",
-                "plugin_version": "0.4.1",
+                "plugin_version": "0.6.0",
                 "context_type": _safe_type(ctx),
                 "step": step,
                 "context_symbols": _safe_dir(ctx),
