@@ -233,4 +233,4 @@ The port is based on the original Wave Overhangs work and related arc-overhang r
 - OrcaSlicer port: Dennis Klappe — [OrcaSlicer-WaveOverhangs](https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs)
 - Related reference: [PrusaSlicer-WaveOverhangs](https://github.com/stmcculloch/PrusaSlicer-WaveOverhangs)
 
-This adaptation retains attribution and is licensed under **AGPL-3.0-or-later**. See [LICENSE](LICENSE).
+This adaptation retains attribution and is licensed under **AGPL-3.0-or-later**.
