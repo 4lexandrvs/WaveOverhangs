@@ -146,7 +146,7 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     for piece in overhang:
         trim_region.extend(piece.offset(-trim_distance))
     if not trim_region:
-        trim_region = overhang
+        return [], []
 
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
     accumulated = seeds
