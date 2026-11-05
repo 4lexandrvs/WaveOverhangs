@@ -12,7 +12,7 @@ class GCodeEmitterTests(unittest.TestCase):
         self.assertIn("M83 ; Wave Overhangs: temporary relative extrusion", result)
         self.assertIn(";TYPE:Wave Overhangs", result)
         self.assertIn("M82 ; Wave Overhangs: restore absolute extrusion", result)
-        self.assertLess(result.index("M82 ; Wave Overhangs"), result.index("G1 X10 Y10 E1.0"))
+        self.assertLess(result.index("M82 ; Wave Overhangs"), result.index("G1 X10 Y10 E5.5"))\n        self.assertIn("G92 E5 ; Wave Overhangs: restore absolute E coordinate", result)
         self.assertTrue(result.endswith("\n"))
 
     def test_keeps_relative_e_mode(self):
@@ -34,7 +34,7 @@ class GCodeEmitterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "layer height"):
             inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]})
 
-    def test_rejects_volumetric_extrusion(self):
+    def test_rejects_tool_changes(self):\n        source = "T0\\n;LAYER_CHANGE\\n;Z:0.2\\n"\n        with self.assertRaisesRegex(ValueError, "multiple-tool"):\n            inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]},\n                               height_by_z={0.2: 0.2})\n\n    def test_rejects_volumetric_extrusion(self):
         source = "M200 D1.75\n;LAYER_CHANGE\n;Z:0.2\n"
         with self.assertRaisesRegex(ValueError, "volumetric"):
             inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]},
