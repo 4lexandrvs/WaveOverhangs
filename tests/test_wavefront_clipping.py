@@ -1,6 +1,6 @@
 import unittest
 
-from plugin.wavefront_engine import _clip_ring_to_region, split_narrow_necks
+from plugin.wavefront_engine import (\n    _clip_ring_to_region, split_narrow_necks, smart_bridgeability_allows\n)
 
 
 class Point:
@@ -54,6 +54,18 @@ class FakeSurface:
 
 
 class WavefrontClippingTests(unittest.TestCase):
+    def test_smart_bridgeability_accepts_small_outside_hull_fraction(self):
+        self.assertTrue(smart_bridgeability_allows(100, 20, threshold=0.20))
+
+    def test_smart_bridgeability_rejects_large_outside_hull_fraction(self):
+        self.assertFalse(smart_bridgeability_allows(100, 20.01, threshold=0.20))
+
+    def test_smart_bridgeability_always_accepts_regions_with_holes(self):
+        self.assertTrue(smart_bridgeability_allows(100, 95, has_holes=True))
+
+    def test_smart_bridgeability_rejects_zero_area(self):
+        self.assertFalse(smart_bridgeability_allows(0, 0))
+
     def test_native_bridge_surfaces_are_not_wave_candidates(self):
         # Orca's Surface::is_internal() includes stInternalBridge.
         bridge = FakeSurface(internal=True, bridge=True)
