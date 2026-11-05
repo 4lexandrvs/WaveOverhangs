@@ -321,6 +321,11 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
 
     # Seed from the strip of the overhang adjacent to material in the layer below.
     expanded_lower = _offset_union(lower_union, seed_reach)
+    # Match Algorithm::RegionExpansionParameters::build(): expand source
+    # contours only enough to create a stable intersection with the overhang.
+    seed_epsilon = max(1, min(int(round(spacing * 0.25)),
+                              int(round(0.05 * float(orca.slicing.scale_factor())
+                                        if hasattr(orca.slicing, "scale_factor") else spacing * 0.05))))
     trim_distance = max(1, int(round(line_width * 0.5)))
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
     paths = []
@@ -328,9 +333,22 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
 
     for original_piece in overhang:
         for wave_piece in _split_narrow_necks(original_piece, minimum_wave_width):
-            seeds = _intersection([wave_piece], expanded_lower)
-            if not seeds or not _smart_bridgeability_allows(
-                    [wave_piece], seeds, spacing, point_factory
+            # The reference starts from open contours of the slightly
+            # expanded anchors, not from the full anchor/overhang overlap.
+            # Reconstruct their narrow inner band with native ExPolygon offsets.
+            anchor_overlap = _intersection([wave_piece], expanded_lower)
+            if not anchor_overlap:
+                continue
+            eroded_anchors = _offset_union(expanded_lower, -2 * seed_epsilon)
+            inner_overlap = (_intersection([wave_piece], eroded_anchors)
+                             if eroded_anchors else [])
+            seeds = _difference(anchor_overlap, inner_overlap)
+            if not seeds:
+                # Degenerate/narrow anchor: retain the available overlap rather
+                # than silently losing a valid attachment.
+                seeds = anchor_overlap
+            if not _smart_bridgeability_allows(
+                    [wave_piece], anchor_overlap, spacing, point_factory
                 ):
                 continue
             trim_region = list(wave_piece.offset(-trim_distance))
