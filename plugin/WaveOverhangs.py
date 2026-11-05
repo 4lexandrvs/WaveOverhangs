@@ -154,9 +154,39 @@ def _clip_ring_to_region(ring, clip_region, sample_step, point_factory):
     return paths
 
 
+
+def _split_narrow_necks(region, minimum_width):
+    """Morphologically separate wave-cover islands across thin necks.
+
+    Erosion reveals disconnected cores; each core is regrown independently
+    and clipped to the source region. The narrow connecting material is left
+    for ordinary infill instead of being claimed by a single wavefront.
+    """
+    half_width = max(1, int(round(float(minimum_width) * 0.5)))
+    if half_width <= 1:
+        return [region]
+    cores = list(region.offset(-half_width))
+    if len(cores) <= 1:
+        return [region]
+    pieces = []
+    for core in cores:
+        for grown in core.offset(half_width):
+            pieces.extend(grown.intersection_ex(region))
+    disjoint = []
+    for piece in pieces:
+        pending = [piece]
+        for kept in disjoint:
+            next_pending = []
+            for candidate in pending:
+                next_pending.extend(candidate.diff_ex(kept))
+            pending = next_pending
+        disjoint.extend(pending)
+    return disjoint if len(disjoint) > 1 else [region]
+
+
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
-                        min_area_growth=0.0):
+                        min_area_growth=0.0, minimum_wave_width=0):
     """Generate anchored offset fronts for one fill surface.
 
     All geometric distances are in Orca scaled integer units. Returns
@@ -176,48 +206,44 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
 
     # Seed from the strip of the overhang adjacent to material in the layer below.
     expanded_lower = _offset_union(lower_union, seed_reach)
-    seeds = _intersection(overhang, expanded_lower)
-    if not seeds:
-        return [], []
-
-    # Keep generated fronts away from the physical overhang edge by half a line.
     trim_distance = max(1, int(round(line_width * 0.5)))
-    trim_region = []
-    for piece in overhang:
-        trim_region.extend(piece.offset(-trim_distance))
-    if not trim_region:
-        # Too narrow to keep a safe line-width margin; leave it to normal infill.
-        return [], []
-
     sample_step = max(1.0, min(float(spacing) * 0.25, float(line_width) * 0.5))
-    accumulated = seeds
-    accumulated_area = _area(accumulated)
     paths = []
+    covered = []
 
-    for _ in range(max(1, int(max_iterations))):
-        grown = _offset_union(accumulated, spacing)
-        next_region = _intersection(grown, overhang)
-        if not next_region:
-            break
-
-        next_area = _area(next_region)
-        if next_area <= accumulated_area + max(0.0, float(min_area_growth)):
-            break
-
-        for piece in next_region:
-            for ring in [piece.contour] + list(piece.holes):
-                paths.extend(_clip_ring_to_region(
-                    ring, trim_region, sample_step, point_factory
-                ))
-
-        accumulated = next_region
-        accumulated_area = next_area
+    for original_piece in overhang:
+        for wave_piece in _split_narrow_necks(original_piece, minimum_wave_width):
+            seeds = _intersection([wave_piece], expanded_lower)
+            if not seeds:
+                continue
+            trim_region = list(wave_piece.offset(-trim_distance))
+            if not trim_region:
+                continue
+            accumulated = seeds
+            accumulated_area = _area(accumulated)
+            piece_paths = []
+            for _ in range(max(1, int(max_iterations))):
+                grown = _offset_union(accumulated, spacing)
+                next_region = _intersection(grown, [wave_piece])
+                if not next_region:
+                    break
+                next_area = _area(next_region)
+                if next_area <= accumulated_area + max(0.0, float(min_area_growth)):
+                    break
+                for piece in next_region:
+                    for ring in [piece.contour] + list(piece.holes):
+                        piece_paths.extend(_clip_ring_to_region(
+                            ring, trim_region, sample_step, point_factory
+                        ))
+                accumulated = next_region
+                accumulated_area = next_area
+            if piece_paths:
+                paths.extend(piece_paths)
+                covered.extend(accumulated)
 
     if not paths:
         return [], []
-
-    # The final accumulated wavefront envelope is removed from normal infill.
-    return paths, _union(accumulated)
+    return paths, _union(covered)
 
 
 def subtract_covered(subject, covered):
@@ -231,6 +257,7 @@ _DEFAULTS = {
     "line_spacing_mm": 0.35,
     "line_width_mm": 0.42,
     "seed_reach_mm": 0.55,
+    "minimum_wave_width_mm": 0.70,
     "max_iterations": 160,
     "min_area_growth_mm2": 0.01,
     "filament_diameter_mm": 1.75,
@@ -260,7 +287,7 @@ def _config(capability):
         cfg.update(raw)
     cfg["enabled"] = bool(cfg["enabled"])
     for key in ("line_spacing_mm", "line_width_mm", "seed_reach_mm",
-                "min_area_growth_mm2", "filament_diameter_mm",
+                "min_area_growth_mm2", "minimum_wave_width_mm", "filament_diameter_mm",
                 "travel_speed_mm_min", "print_speed_mm_min"):
         cfg[key] = float(cfg[key])
     cfg["max_iterations"] = max(1, min(1000, int(cfg["max_iterations"])))
@@ -534,7 +561,8 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
                         continue
                     paths, covered = generate_wavefronts(
                         subject, lower_slices, spacing, width, seed_reach,
-                        orca.host.Point, cfg["max_iterations"], min_area_growth
+                        orca.host.Point, cfg["max_iterations"], min_area_growth,
+                        int(round(cfg["minimum_wave_width_mm"] * scale))
                     )
                     if paths:
                         # Transform from object coordinates to printer/world XY.
