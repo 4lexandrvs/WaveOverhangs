@@ -1,6 +1,8 @@
 import unittest
 
-from plugin.wavefront_engine import (\n    _clip_ring_to_region, split_narrow_necks, smart_bridgeability_allows\n)
+from plugin.wavefront_engine import (
+    _clip_ring_to_region, split_narrow_necks, smart_bridgeability_allows
+)
 
 
 class Point:
