@@ -5,7 +5,7 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.4.0"
+# version = "0.4.1"
 # ///
 
 import inspect
@@ -90,6 +90,14 @@ def _inspect_object(value, candidate_attrs, depth=0):
     return result
 
 
+def _resolve_collection(owner, attr_name):
+    """Read a collection attribute; call zero-argument pybind methods when needed."""
+    value = getattr(owner, attr_name)
+    if callable(value):
+        value = value()
+    return value
+
+
 def _safe_length(value):
     try:
         return len(value)
@@ -151,7 +159,7 @@ _OBJECT_ATTRS = (
 
 def _inspect_layers(owner, attr_name, max_layers=2):
     try:
-        collection = getattr(owner, attr_name)
+        collection = _resolve_collection(owner, attr_name)
     except Exception as exc:
         return {"label": attr_name, "access_error": str(exc)}
     result = {
@@ -177,8 +185,8 @@ def _inspect_layers(owner, attr_name, max_layers=2):
             for nested_name in ("regions", "layer_regions", "perimeters", "fills",
                                 "slices", "lslices", "lslices_ex"):
                 try:
-                    candidate = getattr(layer_obj, nested_name)
-                    if candidate is None or callable(candidate):
+                    candidate = _resolve_collection(layer_obj, nested_name)
+                    if candidate is None:
                         continue
                     item_attrs = (_REGION_ATTRS if nested_name in ("regions", "layer_regions")
                                   else _PATH_ATTRS)
@@ -207,7 +215,7 @@ def _inspect_pipeline_geometry(ctx, step):
 
     if print_obj is not None:
         try:
-            objects = getattr(print_obj, "objects")
+            objects = _resolve_collection(print_obj, "objects")
             result["print_objects"] = _inspect_collection(
                 objects, _OBJECT_ATTRS, "print.objects", 2
             )
@@ -254,7 +262,7 @@ def _result_message(marker, report, limit=11500):
 
 def _write_diagnostic_report(report, reset=False):
     """Write full JSONL diagnostics to the OS temporary directory."""
-    path = os.path.join(tempfile.gettempdir(), "WaveOverhangs_API_Probe_0.4.0.jsonl")
+    path = os.path.join(tempfile.gettempdir(), "WaveOverhangs_API_Probe_0.4.1.jsonl")
     try:
         mode = "w" if reset else "a"
         with open(path, mode, encoding="utf-8") as stream:
@@ -268,7 +276,7 @@ def _write_diagnostic_report(report, reset=False):
 def _compact_log_summary(report, report_path, write_error):
     geometry = report.get("geometry_inspection", {})
     summary = {
-        "plugin_version": "0.4.0",
+        "plugin_version": "0.4.1",
         "step": report.get("step"),
         "context_type": report.get("context_type"),
         "print_type": report.get("print_type"),
@@ -313,7 +321,7 @@ class WaveOverhangsApiReport(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         report = {
             "plugin": "Wave Overhangs API Probe",
-            "plugin_version": "0.4.0",
+            "plugin_version": "0.4.1",
             "orca_version": _safe_getattr(orca, "__version__"),
             "orca_type": _safe_type(orca),
             "orca_module_symbols": _safe_dir(orca),
@@ -364,7 +372,7 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
             step_key = str(step)
             report = {
                 "plugin": "Wave Overhangs Pipeline Probe",
-                "plugin_version": "0.3.0",
+                "plugin_version": "0.4.1",
                 "context_type": _safe_type(ctx),
                 "step": step,
                 "context_symbols": _safe_dir(ctx),
