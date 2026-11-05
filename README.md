@@ -19,7 +19,7 @@ The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 - Anchoring band derived from the lower layer's geometry.
 - Initial processing is restricted to internal fill surfaces; top/bottom skins and bridge surfaces keep OrcaSlicer's native strategy.
 - Repeated polygon-offset propagation at configurable wave spacing.
-- Partial Smart bridgeability gate: overhang area outside the convex hull of its anchor regions must be at most 20%; regions with holes always qualify.
+- Smart Bridgeability: waves are selected when either at least 20% of overhang area lies outside the anchor convex hull or the minimum unsupported-boundary projection reaches 20% of the perimeter; regions with holes always qualify. Boundary clipping is sampled at a configurable geometric resolution.
 - Morphological narrow-neck splitting: thin connecting regions are left for ordinary infill.
 - Wavefront path extraction and clipping to an inset overhang boundary.
 - Covered-area calculation and subtraction from fill_surfaces before infill generation.
@@ -28,7 +28,7 @@ The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 
 ## Not yet implemented / not production-ready
 
-- The unsupported-boundary projection test from Smart bridgeability (the convex-hull area test and hole exception are now implemented).
+- ZigZag joining and corner-aware spacing taper from the reference.
 - ZigZag joining and corner-aware spacing taper from the reference.
 - Exact native polyline clipping; the Python port uses bounded segment sampling.
 - Full validation of all printer start/end scripts, firmware modes, pressure advance, and retraction behavior.
