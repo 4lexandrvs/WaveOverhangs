@@ -16,15 +16,19 @@ import math
 
 
 def _union(items):
+    # The binding exposes a binary union. Fold by subtracting already-kept
+    # components from each incoming polygon to avoid duplicating disjoint pieces.
     result = []
     for item in items:
-        if not result:
-            result = [item]
-        else:
-            merged = []
-            for current in result:
-                merged.extend(current.union_ex(item))
-            result = merged
+        pending = [item]
+        for existing in result:
+            next_pending = []
+            for candidate in pending:
+                next_pending.extend(candidate.diff_ex(existing))
+            pending = next_pending
+            if not pending:
+                break
+        result.extend(pending)
     return result
 
 
