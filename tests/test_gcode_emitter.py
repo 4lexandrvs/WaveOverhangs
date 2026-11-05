@@ -5,7 +5,7 @@ from plugin.gcode_emitter import inject_layer_paths
 
 class GCodeEmitterTests(unittest.TestCase):
     def test_inserts_paths_and_restores_absolute_e_xy_and_feedrate(self):
-        source = "G92 E5.0\nG1 X10 Y10 F1200\n;LAYER_CHANGE\n;Z:0.2\nG1 X12 Y10 E5.5\n"
+        source = "G92 E5.0\nG1 X10 Y10 F1200\n;LAYER_CHANGE\n;Z:0.2\nG1 Z0.2 F900\nG1 X12 Y10 E5.5\n"
         paths = {0.2: [[(1.0, 2.0), (2.0, 2.0)]]}
         result, count = inject_layer_paths(source, paths, height_by_z={0.2: 0.2})
         self.assertEqual(count, 1)
@@ -20,7 +20,7 @@ class GCodeEmitterTests(unittest.TestCase):
         self.assertTrue(result.endswith("\n"))
 
     def test_keeps_relative_e_mode(self):
-        source = "M83\nG1 X0 Y0 F1200\n;LAYER_CHANGE\n;Z:0.4\nG1 X1 Y0 E0.2\n"
+        source = "M83\nG1 X0 Y0 F1200\n;LAYER_CHANGE\n;Z:0.4\nG1 Z0.4 F900\nG1 X1 Y0 E0.2\n"
         paths = {0.4: [[(0.0, 0.0), (1.0, 0.0)]]}
         result, count = inject_layer_paths(source, paths, height_by_z={0.4: 0.2})
         self.assertEqual(count, 1)
@@ -35,7 +35,7 @@ class GCodeEmitterTests(unittest.TestCase):
         self.assertEqual(result, source)
 
     def test_requires_exact_layer_height(self):
-        source = "G1 X10 Y10 F1200\n;LAYER_CHANGE\n;Z:0.2\nG1 X11 Y10 E1.0\n"
+        source = "G1 X10 Y10 F1200\n;LAYER_CHANGE\n;Z:0.2\nG1 Z0.2 F900\nG1 X11 Y10 E1.0\n"
         with self.assertRaisesRegex(ValueError, "layer height"):
             inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]})
 
