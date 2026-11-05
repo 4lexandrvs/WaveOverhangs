@@ -26,7 +26,8 @@ def _path_gcode(path, width, height, filament_diameter, travel_speed, print_spee
     if len(points) < 2:
         return []
     filament_area = math.pi * (filament_diameter * 0.5) ** 2
-    if filament_area <= 0 or width <= 0 or height <= 0:
+    bead_area = height * (width - height) + math.pi * (height * 0.5) ** 2
+    if filament_area <= 0 or width <= 0 or height <= 0 or width < height:
         raise ValueError("Wave Overhangs: width, height and filament diameter must be positive")
     out = [
         ";TYPE:Wave Overhangs",
@@ -36,7 +37,7 @@ def _path_gcode(path, width, height, filament_diameter, travel_speed, print_spee
         length = math.hypot(b[0] - a[0], b[1] - a[1])
         if length <= 1e-7:
             continue
-        e_delta = width * height * length / filament_area
+        e_delta = bead_area * length / filament_area
         out.append("G1 X%s Y%s E%s F%s" % (
             _fmt(b[0]), _fmt(b[1]), _fmt(e_delta), _fmt(print_speed)
         ))
