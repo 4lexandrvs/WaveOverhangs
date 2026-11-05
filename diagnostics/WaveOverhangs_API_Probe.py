@@ -145,34 +145,45 @@ def _inspect_layers(owner, attr_name, max_layers=2):
         collection = getattr(owner, attr_name)
     except Exception as exc:
         return {"label": attr_name, "access_error": str(exc)}
-    layers = _inspect_collection(collection, _LAYER_ATTRS, attr_name, max_layers)
-    for sample in layers.get("sample", []):
-        layer = sample.get("item", {})
-        # Inspect region collections and common geometry collections on sampled layers.
-        raw_layer = None
-        try:
-            raw_layer = next(iter(collection)) if len(layers.get("sample", [])) == 1 else None
-        except Exception:
-            pass
-        # The sample's attributes already record repr/type; collection details are
-        # gathered separately below without invoking arbitrary methods.
-        attrs = layer.get("attributes", {})
-        nested = {}
-        for nested_name in ("regions", "layer_regions", "perimeters", "fills",
-                            "slices", "lslices", "lslices_ex"):
+    result = {
+        "label": attr_name,
+        "type": _safe_type(collection),
+        "repr": _safe_repr(collection),
+        "symbols": _safe_dir(collection)[:100],
+        "length": _safe_getattr(collection, "__len__"),
+        "sample": [],
+    }
+    try:
+        iterator = iter(collection)
+        for index in range(max_layers):
             try:
-                candidate = getattr(raw_layer, nested_name) if raw_layer is not None else None
-                if candidate is not None and not callable(candidate):
-                    nested[nested_name] = _inspect_collection(
-                        candidate, _REGION_ATTRS if nested_name in ("regions", "layer_regions")
-                        else _PATH_ATTRS, nested_name, 2
+                layer_obj = next(iterator)
+            except StopIteration:
+                break
+            sample = {
+                "index": index,
+                "item": _inspect_object(layer_obj, _LAYER_ATTRS),
+                "nested_collections": {},
+            }
+            for nested_name in ("regions", "layer_regions", "perimeters", "fills",
+                                "slices", "lslices", "lslices_ex"):
+                try:
+                    candidate = getattr(layer_obj, nested_name)
+                    if candidate is None or callable(candidate):
+                        continue
+                    item_attrs = (_REGION_ATTRS if nested_name in ("regions", "layer_regions")
+                                  else _PATH_ATTRS)
+                    sample["nested_collections"][nested_name] = _inspect_collection(
+                        candidate, item_attrs, nested_name, 2
                     )
-            except Exception as exc:
-                nested[nested_name] = {"access_error": str(exc)}
-        if nested:
-            layer["nested_collections"] = nested
-    return layers
-
+                except Exception as exc:
+                    sample["nested_collections"][nested_name] = {
+                        "access_error": str(exc)
+                    }
+            result["sample"].append(sample)
+    except Exception as exc:
+        result["iteration_error"] = "{}: {}".format(type(exc).__name__, exc)
+    return result
 
 def _inspect_pipeline_geometry(ctx, step):
     result = {}
