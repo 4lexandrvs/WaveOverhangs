@@ -222,7 +222,61 @@ def _anchor_hull_expolygon(anchor_regions):
     return [orca.host.ExPolygon(polygon, [])]
 
 
-def _smart_bridgeability_allows(overhang, anchor_regions):
+def _unsupported_boundary_segments(overhang, anchor_regions, point_factory,
+                                   sample_step):
+    """Approximate diff_pl(overhang boundary, expanded anchors) by sampling."""
+    supported = _offset_union(anchor_regions, 1)
+    segments = []
+    perimeter = 0.0
+    step_limit = max(1.0, float(sample_step))
+    for piece in overhang:
+        for ring in [piece.contour] + list(piece.holes):
+            points = list(ring.points)
+            if len(points) < 2:
+                continue
+            for index, start in enumerate(points):
+                end = points[(index + 1) % len(points)]
+                ax, ay = float(start.x), float(start.y)
+                bx, by = float(end.x), float(end.y)
+                dx, dy = bx - ax, by - ay
+                length = math.hypot(dx, dy)
+                perimeter += length
+                count = max(1, int(math.ceil(length / step_limit)))
+                for part in range(count):
+                    t0, t1 = part / count, (part + 1) / count
+                    x0, y0 = ax + dx * t0, ay + dy * t0
+                    x1, y1 = ax + dx * t1, ay + dy * t1
+                    midpoint = point_factory(
+                        int(round((x0 + x1) * 0.5)),
+                        int(round((y0 + y1) * 0.5))
+                    )
+                    if not _point_inside(midpoint, supported):
+                        segments.append((x0, y0, x1, y1))
+    return segments, perimeter
+
+
+def _unsupported_projection_cost(segments):
+    candidates = {}
+    usable = []
+    for x0, y0, x1, y1 in segments:
+        dx, dy = x1 - x0, y1 - y0
+        length = math.hypot(dx, dy)
+        if length <= 1e-9:
+            continue
+        nx, ny = -dy / length, dx / length
+        key = int(math.ceil(math.atan2(ny, nx) * 1000.0))
+        candidates.setdefault(key, (nx, ny))
+        usable.append((dx, dy))
+    if not usable:
+        return 0.0
+    return min(
+        sum(abs(dx * nx + dy * ny) for dx, dy in usable)
+        for nx, ny in candidates.values()
+    )
+
+
+def _smart_bridgeability_allows(overhang, anchor_regions, spacing,
+                                point_factory):
     # Hole-bearing overhangs always receive waves in the reference algorithm.
     if any(list(piece.holes) for piece in overhang):
         return True
@@ -233,7 +287,16 @@ def _smart_bridgeability_allows(overhang, anchor_regions):
     if overhang_area <= 0:
         return False
     outside_hull_area = _area(_difference(overhang, hull))
-    return outside_hull_area / overhang_area <= 0.20
+    sample_step = max(1.0, float(spacing) * 0.25)
+    unsupported, perimeter = _unsupported_boundary_segments(
+        overhang, anchor_regions, point_factory, sample_step
+    )
+    unsupported_distance = _unsupported_projection_cost(unsupported)
+    # Match the reference OR condition: either metric can justify wave infill.
+    return (
+        outside_hull_area >= 0.20 * overhang_area or
+        (perimeter > 0 and unsupported_distance >= 0.20 * perimeter)
+    )
 
 
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
@@ -245,8 +308,8 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     (paths, covered_expolygons). Paths contain scaled XY coordinate pairs;
     covered_expolygons is the area to subtract from ordinary infill.
 
-    This is the core propagation stage of the reference algorithm. It deliberately
-    leaves advanced bridgeability heuristics and optional patterns for later ports.
+    This is the core propagation stage. Smart Bridgeability uses both reference
+    metrics; optional path-joining and corner-taper patterns remain unported.
     """
     if not lower_slices or spacing <= 0 or line_width <= 0 or seed_reach <= 0:
         return [], []
@@ -266,7 +329,9 @@ def generate_wavefronts(subject, lower_slices, spacing, line_width,
     for original_piece in overhang:
         for wave_piece in _split_narrow_necks(original_piece, minimum_wave_width):
             seeds = _intersection([wave_piece], expanded_lower)
-            if not seeds or not _smart_bridgeability_allows([wave_piece], seeds):
+            if not seeds or not _smart_bridgeability_allows(
+                    [wave_piece], seeds, spacing, point_factory
+                ):
                 continue
             trim_region = list(wave_piece.offset(-trim_distance))
             if not trim_region:
