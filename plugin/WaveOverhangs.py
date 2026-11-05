@@ -424,7 +424,7 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
         instance = model_object.instance(0)
         if not instance.is_printable():
             return orca.ExecutionResult.success("Wave Overhangs: skipped; model instance is not printable")
-        matrix = instance.matrix()
+        matrix = ctx.object.trafo()
 
         scale = 1.0 / float(orca.slicing.unscale(1))
         spacing = int(round(cfg["line_spacing_mm"] * scale))
