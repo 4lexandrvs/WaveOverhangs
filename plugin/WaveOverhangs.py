@@ -3,13 +3,13 @@
 #
 # [tool.orcaslicer.plugin]
 # name = "Wave Overhangs"
-# description = "Experimental wave-shaped contour treatment on unsupported perimeter sections."
+# description = "Wavefront overhang paths for unsupported regions (development build)."
 # author = "WaveOverhangs contributors"
-# version = "0.1.0"
+# version = "0.2.0-dev"
 # type = "slicing-pipeline"
 # ///
 """
-Wave Overhangs — first geometry prototype for OrcaSlicer 2.5.0.
+Wave Overhangs — plugin integration scaffold for OrcaSlicer 2.5.0.
 
 This is deliberately a contour-level prototype, not a port of the original
 WaveOverhangs extrusion-path generator. It detects unsupported portions of
@@ -30,7 +30,7 @@ import orca
 
 
 _DEFAULTS = {
-    "enabled": True,
+    "enabled": False,
     "amplitude_mm": 0.12,
     "period_mm": 1.20,
     "sample_step_fraction": 0.125,
