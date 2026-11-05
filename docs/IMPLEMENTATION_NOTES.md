@@ -2,51 +2,86 @@
 
 ## Target and architecture
 
-Target: unmodified OrcaSlicer 2.5.0, build revision `af2ffb8c`. The implementation is a Python slicing-pipeline plugin; it does not require a slicer fork or a custom C++ build.
+Target: unmodified OrcaSlicer 2.5.0, build revision af2ffb8c. The implementation is a Python slicing-pipeline plugin; it does not require a slicer fork or a custom C++ build.
 
-The intended plugin-only pipeline is:
+The plugin now connects two real OrcaSlicer pipeline seams:
 
-1. At `Step.posPrepareInfill`, after `prepare_infill` and before `make_fills`, detect unsupported regions, generate wavefront polylines, and subtract the wave-covered area from each affected `LayerRegion.fill_surfaces` collection. The normal infill generator then sees only the residual area.
-2. Persist only plain numeric path data (never Orca graph references) for the export phase.
-3. At `Step.psGCodePostProcess`, insert the generated paths into the exported G-code using the actual layer Z and extrusion parameters.
-4. Keep the implementation opt-in and reject print modes whose coordinate or extrusion semantics are not yet supported.
+1. Step.posPrepareInfill: after prepare_infill and before make_fills. The plugin calculates unsupported portions of each fill surface, generates anchored offset wavefronts, and subtracts the final wave-covered envelope from LayerRegion.fill_surfaces.
+2. Step.psGCodePostProcess: after the classic post-process scripts, the plugin injects the saved numeric XY paths into the exported G-code at matching layer Z markers.
 
-The exact OrcaSlicer source confirms that `posPrepareInfill` is before `make_fills`, while `posInfill` is too late. It also confirms that `psGCodePostProcess` edits the exported G-code file in place, with `ctx.print` and `ctx.object` unavailable at that stage. The post-processed file is not reflected in the slicer's G-code preview.
+The geometry graph is never retained between callbacks. Only plain numeric XY paths and layer heights are kept by the capability instance.
 
 ## Reference algorithm and attribution
 
-The reference generator is Janis A. Andersons' Wave Overhangs algorithm, building on Steven McCulloch's arc-overhang work and its PrusaSlicer/OrcaSlicer integrations:
+The port is based on the core propagation structure of the original Wave Overhangs implementation:
 
-- https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs
-- https://github.com/stmcculloch/PrusaSlicer-WaveOverhangs
+- Wave overhang generation: Janis A. Andersons (andersonsjanis)
+- Arc-overhang algorithm: Steven McCulloch (stmcculloch)
+- PrusaSlicer integration: Steven McCulloch
+- OrcaSlicer port: Dennis Klappe (dennisklappe)
+- Reference source: https://github.com/dennisklappe/OrcaSlicer-WaveOverhangs
 
-The reference algorithm propagates fronts from supported anchor boundaries, clips them to the overhang region, handles narrow regions, and returns the area actually covered by generated paths. That residual-area result is essential: ordinary infill must not be generated underneath the wave paths.
+The Python implementation retains attribution and is distributed under AGPL-3.0-or-later.
 
-The reference projects are AGPL-3.0. Any port or adaptation must preserve required copyright notices and comply with AGPL-3.0 or later. The plugin must retain clear attribution.
+### Ported in the current development build
+
+- Determine overhang geometry as current fill surface minus the lower layer's merged slices.
+- Form an anchor band by intersecting the overhang with an expanded lower-layer region.
+- Propagate fronts by repeated polygon offsets at the configured wave spacing, clipped to the overhang.
+- Clip generated contour segments to an inset boundary so paths do not run directly along the overhang edge.
+- Return the final accumulated envelope as covered geometry.
+- Subtract that envelope from the original fill surface before normal infill generation.
+- Emit the generated paths through the exported-G-code post-process hook.
+
+### Not yet ported from the full reference implementation
+
+- Smart bridgeability heuristics and bridge-aware region selection.
+- Narrow-neck detection and split slits.
+- ZigZag path joining and Smart path orientation.
+- Corner-aware spacing taper.
+- All reference tuning parameters and exact C++ geometry helpers.
+
+The Python port also approximates the reference polyline clipping operation by bounded segment sampling because the Python bindings do not expose the native intersection_pl helper. This can introduce small endpoint/shape deviations and requires runtime geometry validation.
 
 ## OrcaSlicer API boundary
 
-Verified against source revision `af2ffb8c`:
+Verified against source revision af2ffb8c:
 
-- `LayerRegion.fill_surfaces` is a mutable `SurfaceCollection`; its `set()`, `append()`, and `clear()` methods mutate the live slicing graph.
-- `ExPolygon` exposes offset, difference, intersection, and union operations.
-- `Step.posPrepareInfill` is the correct seam for modifying fill geometry before infill generation.
-- `Step.psGCodePostProcess` is the exported-G-code seam.
-- Extrusion entity collections remain read-only from Python, so generated wave paths must be emitted through G-code post-processing rather than inserted into the native extrusion tree.
+- LayerRegion.fill_surfaces is a mutable SurfaceCollection; set(), append(), and clear() mutate the live slicing graph.
+- ExPolygon exposes offset, difference, intersection, and binary union operations.
+- Step.posPrepareInfill is before make_fills, so fill-surface edits cascade into ordinary infill.
+- Step.psGCodePostProcess edits the exported G-code file in place. ctx.print and ctx.object are unavailable in that callback.
+- Extrusion entity collections are read-only from Python, so generated wave paths are emitted through G-code post-processing.
 
-This API boundary does **not** imply that the feature is already implemented. It defines a plugin-only route that must be completed and validated.
+## Safety restrictions in this build
+
+- Feature is disabled by default. Enable it only for disposable test exports.
+- Only one print object and one printable model instance are accepted.
+- Additional tools, volumetric extrusion (M200), and relative XY motion (G91) are rejected by the G-code emitter.
+- Exact layer heights and a known XY position at the layer marker are required.
+- The emitter restores absolute E coordinates, XY position, and the previous feedrate after each inserted group.
+- The default filament diameter is 1.75 mm; it must be changed in plugin settings for a 2.85 mm filament system.
+- Post-processed G-code is not reflected in OrcaSlicer's G-code preview.
+- The plugin does not yet validate printer-specific start/end G-code, pressure advance, firmware retraction, or every possible modal command.
+
+These restrictions are not a claim of production readiness. Do not print with this development build until the generated geometry and exported G-code have been inspected on a disposable model and the resulting print has been validated.
 
 ## Current repository status
 
-- `plugin/gcode_emitter.py` contains a conservative emitter for already-generated, printer-space XY paths. It now requires exact layer heights and rejects volumetric extrusion (`M200`). It is a helper, not yet connected to the geometry stage.
-- `plugin/WaveOverhangs.py` still contains the earlier contour-deformation experiment as legacy code, but it is disabled by default. That experiment is not Wave Overhangs and must not be enabled as a substitute.
-- The wavefront geometry generator, fill-area subtraction, path persistence, and end-to-end G-code integration remain in development.
-- Until those stages are connected and tested on exported G-code, this plugin is not ready for a real print.
+- plugin/WaveOverhangs.py contains the plugin entry point, pre-infill geometry integration, and G-code post-processing.
+- The wavefront core is inlined in the entry point because OrcaSlicer's single-file plugin loader does not automatically add the plugin directory to Python's module search path.
+- plugin/wavefront_engine.py is a standalone copy of the geometric core for development/reference; the entry point currently uses its inlined version.
+- plugin/gcode_emitter.py is retained as an independently testable helper, while the plugin currently uses an inlined emitter to avoid sibling-module import assumptions.
+- tests/test_gcode_emitter.py tests the standalone helper; it does not yet exercise the inlined plugin emitter or Orca geometry integration.
+- No runtime test against OrcaSlicer has yet been completed.
 
-## Supported-scope strategy
+## Next validation steps
 
-The first end-to-end validation target should be one model object, one instance, one extruder, non-volumetric extrusion, and ordinary XY bed coordinates. The plugin must explicitly skip unsupported cases rather than emit paths with guessed transforms, heights, or extrusion values. Multi-object/instance transforms, multiple tools, volumetric extrusion, and unusual firmware modes require separate validation.
+1. Install the plugin with enabled=false and confirm it loads.
+2. Enable it for a disposable single-object, single-instance, single-extruder, non-volumetric print.
+3. Confirm the pipeline log reports generated paths and changed fill surfaces.
+4. Export G-code and verify that each path appears at the intended Z, with no duplicate normal infill under the covered envelope.
+5. Inspect extrusion amounts, travel moves, XY transforms, layer transitions, and print preview limitations.
+6. Compare a small test print with the unmodified slice before expanding support to multiple objects, instances, tools, and advanced patterns.
 
-## Licensing
-
-The project is distributed under AGPL-3.0. Preserve the original algorithm's attribution and license notices in any adapted source files.
+The full reference project remains the source of truth for algorithm parity. The current code is a first plugin-only core port, not yet a feature-complete port.
