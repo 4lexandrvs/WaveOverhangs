@@ -5,11 +5,13 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.3.0"
+# version = "0.4.0"
 # ///
 
 import inspect
 import json
+import os
+import tempfile
 import traceback
 import orca
 
@@ -250,6 +252,44 @@ def _result_message(marker, report, limit=11500):
     return marker + " " + json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
 
 
+def _write_diagnostic_report(report, reset=False):
+    """Write full JSONL diagnostics to the OS temporary directory."""
+    path = os.path.join(tempfile.gettempdir(), "WaveOverhangs_API_Probe_0.4.0.jsonl")
+    try:
+        mode = "w" if reset else "a"
+        with open(path, mode, encoding="utf-8") as stream:
+            stream.write(json.dumps(report, ensure_ascii=False, separators=(",", ":"), default=str))
+            stream.write("\\n")
+        return path, None
+    except Exception as exc:
+        return path, "{}: {}".format(type(exc).__name__, exc)
+
+
+def _compact_log_summary(report, report_path, write_error):
+    geometry = report.get("geometry_inspection", {})
+    summary = {
+        "plugin_version": "0.4.0",
+        "step": report.get("step"),
+        "context_type": report.get("context_type"),
+        "print_type": report.get("print_type"),
+        "object_type": report.get("object_type"),
+        "geometry_keys": sorted(geometry.keys()),
+        "report_file": report_path,
+    }
+    for key in ("layers", "support_layers", "print_objects"):
+        collection = geometry.get(key, {})
+        if isinstance(collection, dict):
+            summary[key] = {
+                "type": collection.get("type"),
+                "length": collection.get("length"),
+                "sample_count": len(collection.get("sample", [])),
+                "iteration_error": collection.get("iteration_error"),
+            }
+    if write_error:
+        summary["report_file_error"] = write_error
+    return summary
+
+
 _PIPELINE_REPORTED_STEPS = set()
 _GEOMETRY_STEPS = ("posSlice", "posPerimeters", "posInfill")
 
@@ -272,7 +312,7 @@ class WaveOverhangsApiReport(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         report = {
             "plugin": "Wave Overhangs API Probe",
-            "plugin_version": "0.3.0",
+            "plugin_version": "0.4.0",
             "orca_version": _safe_getattr(orca, "__version__"),
             "orca_type": _safe_type(orca),
             "orca_module_symbols": _safe_dir(orca),
@@ -342,13 +382,20 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
                     except Exception as exc:
                         report["config_values"][key] = "<error: {}>".format(exc)
 
-            if step_key not in _PIPELINE_REPORTED_STEPS:
-                _PIPELINE_REPORTED_STEPS.add(step_key)
-                if any(token in step_key for token in _GEOMETRY_STEPS):
-                    report["geometry_inspection"] = _inspect_pipeline_geometry(ctx, step)
-                message = _result_message("[WAVE_OVERHANGS_PIPELINE_PROBE]", report)
+            is_geometry_step = any(token in step_key for token in _GEOMETRY_STEPS)
+            if is_geometry_step:
+                report["geometry_inspection"] = _inspect_pipeline_geometry(ctx, step)
+                reset_file = any(token in step_key for token in ("posSlice",))
+                report_path, write_error = _write_diagnostic_report(report, reset=reset_file)
+                summary = _compact_log_summary(report, report_path, write_error)
+                message = "[WAVE_OVERHANGS_API_PROBE_SUMMARY] " + json.dumps(
+                    summary, ensure_ascii=False, separators=(",", ":")
+                )
+            elif step_key not in _PIPELINE_REPORTED_STEPS:
+                message = _result_message("[WAVE_OVERHANGS_PIPELINE_PROBE]", report, limit=4500)
             else:
-                message = "Wave Overhangs pipeline probe observed step {} (details already logged).".format(step)
+                message = "Wave Overhangs pipeline probe observed step {}.".format(step)
+            _PIPELINE_REPORTED_STEPS.add(step_key)
 
             print(message)
             return orca.ExecutionResult.success(message)
