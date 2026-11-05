@@ -40,7 +40,7 @@ class GCodeEmitterTests(unittest.TestCase):
             inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]})
 
     def test_requires_known_xy_position(self):
-        source = ";LAYER_CHANGE\n;Z:0.2\n"
+        source = ";LAYER_CHANGE\n;Z:0.2\nG1 Z0.2 F900\n"
         with self.assertRaisesRegex(ValueError, "XY position"):
             inject_layer_paths(source, {0.2: [[(0, 0), (1, 0)]]},
                                height_by_z={0.2: 0.2})
