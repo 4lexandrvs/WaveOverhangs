@@ -17,11 +17,12 @@ The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 ## Implemented in this development build
 
 - Anchoring band derived from the lower layer's geometry.
+- Initial processing is restricted to internal fill surfaces; top/bottom skins and bridge surfaces keep OrcaSlicer's native strategy.
 - Repeated polygon-offset propagation at configurable wave spacing.
 - Wavefront path extraction and clipping to an inset overhang boundary.
 - Covered-area calculation and subtraction from fill_surfaces before infill generation.
 - Export-stage G-code insertion with layer-height matching.
-- Conservative checks for unsupported extrusion modes and print setups.
+- Rounded-bead extrusion-volume calculation and conservative checks for unsupported extrusion modes and print setups.
 
 ## Not yet implemented / not production-ready
 
