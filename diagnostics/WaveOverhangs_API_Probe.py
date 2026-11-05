@@ -5,7 +5,7 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.5.0"
+# version = "0.6.0"
 # ///
 
 import inspect
@@ -157,6 +157,45 @@ _OBJECT_ATTRS = (
 )
 
 
+def _inspect_callable_api(owner, method_name, sample_limit=4):
+    """Inspect and call known read-only collection accessors; never invoke mutators."""
+    try:
+        method = getattr(owner, method_name)
+    except Exception as exc:
+        return {"access_error": "{}: {}".format(type(exc).__name__, exc)}
+    if not callable(method):
+        return {"value": _safe_repr(method)}
+    item = {
+        "callable": True,
+        "type": _safe_type(method),
+        "repr": _safe_repr(method),
+        "doc": _safe_repr(getattr(method, "__doc__", None), 900),
+    }
+    try:
+        item["signature"] = str(inspect.signature(method))
+    except Exception as exc:
+        item["signature_error"] = "{}: {}".format(type(exc).__name__, exc)
+    try:
+        value = method()
+        item["call_succeeded"] = True
+        item["return_type"] = _safe_type(value)
+        item["return_repr"] = _safe_repr(value)
+        item["return_symbols"] = _safe_dir(value)[:100]
+        item["return_length"] = _safe_length(value)
+        if isinstance(value, (list, tuple)):
+            item["return_sample"] = [
+                _inspect_object(v, _PATH_ATTRS) for v in value[:sample_limit]
+            ]
+        elif value is not None and method_name == "flatten_paths":
+            item["return_sample"] = _inspect_collection(
+                value, _PATH_ATTRS, method_name, sample_limit
+            )
+    except Exception as exc:
+        item["call_succeeded"] = False
+        item["call_error"] = "{}: {}".format(type(exc).__name__, exc)
+    return item
+
+
 def _inspect_extrusion_entities(region_obj, attr_name):
     try:
         collection = _resolve_collection(region_obj, attr_name)
@@ -166,44 +205,19 @@ def _inspect_extrusion_entities(region_obj, attr_name):
             attr_name,
             3,
         )
-        for entity_sample in result.get("sample", []):
-            try:
-                entity = collection[entity_sample["index"]]
-            except Exception:
-                continue
-            try:
-                paths = _resolve_collection(entity, "paths")
-            except Exception:
-                paths = None
-            if paths is not None:
-                entity_sample["path_collection"] = _inspect_collection(
-                    paths,
-                    ("role", "width", "height", "mm3_per_mm", "points"),
-                    "paths",
-                    3,
+        result["read_only_accessors"] = {
+            method_name: _inspect_callable_api(collection, method_name)
+            for method_name in ("size", "role", "entities", "flatten_paths")
+        }
+        # entities() and flatten_paths() may expose the native contents even though
+        # ExtrusionEntityCollection itself is not iterable or indexable.
+        for method_name in ("entities", "flatten_paths"):
+            accessor = result["read_only_accessors"].get(method_name, {})
+            if accessor.get("call_succeeded"):
+                returned = getattr(collection, method_name)()
+                result[method_name + "_expanded"] = _inspect_collection(
+                    returned, _PATH_ATTRS, method_name, 4
                 )
-            try:
-                points = _resolve_collection(entity, "points")
-            except Exception:
-                points = None
-            if points is not None:
-                entity_sample["point_collection"] = {
-                    "type": _safe_type(points),
-                    "length": _safe_length(points),
-                    "sample": [],
-                }
-                try:
-                    for point_index, point in enumerate(points):
-                        if point_index >= 5:
-                            break
-                        entity_sample["point_collection"]["sample"].append({
-                            "index": point_index,
-                            "type": _safe_type(point),
-                            "repr": _safe_repr(point, 180),
-                            "symbols": _safe_dir(point)[:30],
-                        })
-                except Exception as point_exc:
-                    entity_sample["point_collection"]["iteration_error"] = str(point_exc)
         return result
     except Exception as exc:
         return {"access_error": "{}: {}".format(type(exc).__name__, exc)}
@@ -301,13 +315,22 @@ def _inspect_pipeline_geometry(ctx, step):
             ))
         ]
         for type_name in ("Layer", "LayerRegion", "ExtrusionPath",
-                          "ExtrusionEntity", "ExtrusionLoop"):
+                          "ExtrusionEntity", "ExtrusionLoop", "ExtrusionMultiPath",
+                          "ExtrusionEntityCollection", "Point", "Polyline"):
             cls = getattr(host, type_name, None)
             if cls is not None:
-                result.setdefault("host_type_details", {})[type_name] = {
+                class_info = {
                     "type": _safe_type(cls),
                     "symbols": _safe_dir(cls)[:100],
+                    "doc": _safe_repr(getattr(cls, "__doc__", None), 1200),
                 }
+                try:
+                    class_info["constructor_signature"] = str(inspect.signature(cls))
+                except Exception as exc:
+                    class_info["constructor_signature_error"] = "{}: {}".format(
+                        type(exc).__name__, exc
+                    )
+                result.setdefault("host_type_details", {})[type_name] = class_info
     return result
 
 
@@ -327,7 +350,7 @@ def _result_message(marker, report, limit=11500):
 def _write_diagnostic_report(report, reset=False):
     """Write full JSONL diagnostics to the OS temporary directory."""
     path = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()),
-                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.5.0.jsonl")
+                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.6.0.jsonl")
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         mode = "w" if reset else "a"
@@ -342,7 +365,7 @@ def _write_diagnostic_report(report, reset=False):
 def _compact_log_summary(report, report_path, write_error):
     geometry = report.get("geometry_inspection", {})
     summary = {
-        "plugin_version": "0.5.0",
+        "plugin_version": "0.6.0",
         "step": report.get("step"),
         "context_type": report.get("context_type"),
         "print_type": report.get("print_type"),
