@@ -11,7 +11,7 @@ _LAYER_Z = re.compile(r"^;Z:([-+0-9.eE]+)\\s*$")
 _E_MODE = re.compile(r"^\\s*M(82|83)(?:\\s|$)", re.IGNORECASE)
 _VOLUMETRIC = re.compile(r"^\\s*M200(?:\\s|$)", re.IGNORECASE)
 _E_VALUE = re.compile(r"(?:^|\\s)E([-+0-9.eE]+)(?:\\s|$)", re.IGNORECASE)
-_TOOL_CHANGE = re.compile(r"^\\s*T[0-9]+(?:\\s|$)", re.IGNORECASE)
+_TOOL_CHANGE = re.compile(r"^\\s*T[1-9][0-9]*(?:\\s|$)", re.IGNORECASE)
 
 
 def _fmt(value):
