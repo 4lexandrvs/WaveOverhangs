@@ -303,7 +303,8 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
 
     lines = source.splitlines()
     insertions = {}
-    layer_start = None
+    awaiting_layer_z = False
+    pending_z = None
     e_mode = "absolute"
     absolute_e = 0.0
     last_feedrate = None
@@ -312,6 +313,17 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
     last_y = None
 
     for index, line in enumerate(lines):
+        if _LAYER_CHANGE.match(line):
+            awaiting_layer_z = True
+            pending_z = None
+            continue
+
+        layer_z_match = _LAYER_Z.match(line)
+        if layer_z_match and awaiting_layer_z:
+            pending_z = float(layer_z_match.group(1))
+            awaiting_layer_z = False
+            continue
+
         command = line.split(";", 1)[0].strip()
         if _VOLUMETRIC.match(command):
             raise ValueError("Wave Overhangs: volumetric extrusion (M200) is not supported")
@@ -351,41 +363,39 @@ def _inject_gcode(source, paths_by_z, heights_by_z, cfg):
             elif upper.startswith(("G0", "G1", "G2", "G3")):
                 absolute_e = value if e_mode == "absolute" else absolute_e + value
 
-        if _LAYER_CHANGE.match(line):
-            layer_start = index
-            continue
-
-        z_match = _LAYER_Z.match(line)
-        if z_match and layer_start is not None:
-            active_z = float(z_match.group(1))
-            paths = next((v for z, v in paths_by_z.items()
-                          if abs(float(z) - active_z) <= 0.015), None)
-            if paths:
-                if last_x is None or last_y is None:
-                    raise ValueError("Wave Overhangs: current XY position is unknown at layer marker")
-                height = next((v for z, v in heights_by_z.items()
-                               if abs(float(z) - active_z) <= 0.015), None)
-                if height is None or float(height) <= 0:
-                    raise ValueError("Wave Overhangs: exact layer height is missing")
-                block = []
-                if e_mode == "absolute":
-                    block.append("M83 ; Wave Overhangs: temporary relative extrusion")
-                for path in paths:
-                    block.extend(_path_gcode(
-                        path, cfg["line_width_mm"], float(height),
-                        cfg["filament_diameter_mm"], cfg["travel_speed_mm_min"],
-                        cfg["print_speed_mm_min"]
+        # The ;Z comment is metadata, not a physical Z move. Insert only after
+        # the first actual move that places the nozzle at this layer's Z.
+        if pending_z is not None and upper.startswith(("G0", "G1", "G2", "G3")):
+            z_move = _Z_VALUE.search(command)
+            if z_move and abs(float(z_move.group(1)) - pending_z) <= 0.015:
+                paths = next((v for z, v in paths_by_z.items()
+                              if abs(float(z) - pending_z) <= 0.015), None)
+                if paths:
+                    if last_x is None or last_y is None:
+                        raise ValueError("Wave Overhangs: current XY position is unknown at layer Z move")
+                    height = next((v for z, v in heights_by_z.items()
+                                   if abs(float(z) - pending_z) <= 0.015), None)
+                    if height is None or float(height) <= 0:
+                        raise ValueError("Wave Overhangs: exact layer height is missing")
+                    block = []
+                    if e_mode == "absolute":
+                        block.append("M83 ; Wave Overhangs: temporary relative extrusion")
+                    for path in paths:
+                        block.extend(_path_gcode(
+                            path, cfg["line_width_mm"], float(height),
+                            cfg["filament_diameter_mm"], cfg["travel_speed_mm_min"],
+                            cfg["print_speed_mm_min"]
+                        ))
+                    if e_mode == "absolute":
+                        block.append("M82 ; Wave Overhangs: restore absolute extrusion")
+                        block.append("G92 E%s ; Wave Overhangs: restore absolute E coordinate" % _fmt(absolute_e))
+                    block.append("G0 X%s Y%s F%s ; Wave Overhangs: restore XY position" % (
+                        _fmt(last_x), _fmt(last_y), _fmt(cfg["travel_speed_mm_min"])
                     ))
-                if e_mode == "absolute":
-                    block.append("M82 ; Wave Overhangs: restore absolute extrusion")
-                    block.append("G92 E%s ; Wave Overhangs: restore absolute E coordinate" % _fmt(absolute_e))
-                block.append("G0 X%s Y%s F%s ; Wave Overhangs: restore XY position" % (
-                    _fmt(last_x), _fmt(last_y), _fmt(cfg["travel_speed_mm_min"])
-                ))
-                if last_feedrate is not None:
-                    block.append("G1 F%s ; Wave Overhangs: restore feedrate" % _fmt(last_feedrate))
-                insertions[index + 1] = block
-            layer_start = None
+                    if last_feedrate is not None:
+                        block.append("G1 F%s ; Wave Overhangs: restore feedrate" % _fmt(last_feedrate))
+                    insertions[index + 1] = block
+                pending_z = None
 
     if not insertions:
         return source, 0
