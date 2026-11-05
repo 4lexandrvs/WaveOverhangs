@@ -294,7 +294,7 @@ def _write_diagnostic_report(report, reset=False):
         mode = "w" if reset else "a"
         with open(path, mode, encoding="utf-8") as stream:
             stream.write(json.dumps(report, ensure_ascii=False, separators=(",", ":"), default=str))
-            stream.write("\\n")
+            stream.write("\n")
         return path, None
     except Exception as exc:
         return path, "{}: {}".format(type(exc).__name__, exc)
