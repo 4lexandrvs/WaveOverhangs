@@ -170,21 +170,53 @@ def split_narrow_necks(region, minimum_width):
     return disjoint if len(disjoint) > 1 else [region]
 
 
-def smart_bridgeability_allows(overhang_area, outside_hull_area,
-                               has_holes=False, threshold=0.20):
-    """Apply the reference algorithm's convex-hull bridgeability gate.
+def unsupported_boundary_projection_cost(segments):
+    """Return the minimum unsupported-boundary projection over candidate normals.
 
-    Regions containing holes always qualify. Otherwise, waves are retained
-    when no more than threshold of the overhang lies outside the convex hull
-    of its anchor regions. The separate unsupported-boundary projection test
-    from the reference is not yet ported.
+    Each segment is (x1, y1, x2, y2). This mirrors
+    BridgeDetector::detect_bridging_direction: segment normals are candidate
+    directions, and each candidate accumulates abs(dot(segment, normal)).
+    """
+    candidates = {}
+    usable = []
+    for segment in segments:
+        x1, y1, x2, y2 = (float(value) for value in segment)
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length <= 1e-9:
+            continue
+        nx, ny = -dy / length, dx / length
+        angle_key = math.ceil(math.atan2(ny, nx) * 1000.0)
+        candidates.setdefault(angle_key, (nx, ny))
+        usable.append((dx, dy))
+    if not usable:
+        return 0.0
+    return min(
+        sum(abs(dx * nx + dy * ny) for dx, dy in usable)
+        for nx, ny in candidates.values()
+    )
+
+
+def smart_bridgeability_allows(overhang_area, outside_hull_area,
+                               unsupported_distance=0.0, perimeter=0.0,
+                               has_holes=False, threshold=0.20):
+    """Apply both Smart Bridgeability tests from the reference implementation.
+
+    Hole-bearing regions always qualify. Otherwise waves are generated when
+    either >= threshold of the area lies outside the anchor convex hull, or
+    the minimum unsupported-boundary projection is >= threshold of perimeter.
     """
     if has_holes:
         return True
     area = float(overhang_area)
     if area <= 0:
         return False
-    return float(outside_hull_area) / area <= float(threshold)
+    outside_ratio = float(outside_hull_area) / area
+    perimeter = float(perimeter)
+    unsupported_ratio_reached = (
+        perimeter > 0 and float(unsupported_distance) >= threshold * perimeter
+    )
+    return outside_ratio >= threshold or unsupported_ratio_reached
 
 
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
