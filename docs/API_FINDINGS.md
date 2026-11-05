@@ -59,9 +59,24 @@ Therefore:
 - A geometry-only workaround would not be equivalent without proving that the ordinary perimeter/fill generator can produce the required wave paths and preserve the required flow, speed, cooling, and support behavior.
 - Exact native integration requires an additional host-side API/bridge that can insert generated extrusion entities at the correct slicing stage, or a change to OrcaSlicer's C++ core. This is not yet a final build decision; first we will validate the installed runtime and test the minimum safe pipeline hook.
 
-## 5. Current diagnostic status
+## 5. Correct interpretation of the user's log
 
-The existing `WaveOverhangs_API_Probe.py` defines a script capability and a slicing-pipeline capability in one module. The source structure is consistent with the API in `af2ffb8c`. The user's main session log did not contain its diagnostic markers, so it does not prove that either capability's `execute()` ran.
+The line
+
+```text
+Python printer-agent plugin 'WaveOverhangs_API_Probe' has no registered capabilities
+```
+
+is emitted by `NetworkAgentFactory::deregister_python_plugin()` when a plugin is being deregistered from the printer-agent subsystem and that plugin has no `PrinterConnection` capabilities. It does **not** mean that the plugin has no capabilities of any type. A Wave Overhangs plugin is expected to provide `Script` and/or `SlicingPipeline`, not a printer connection. Therefore this line is normal and is not evidence of a registration failure.
+
+Source:
+- [NetworkAgentFactory.cpp at af2ffb8c](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/Utils/NetworkAgentFactory.cpp)
+
+The main session log did not contain the probe's custom markers. That alone does not prove the script did not run: the official plugin documentation routes Python `print()` output and tracebacks to a separate `python_*.log` file.
+
+## 6. Next runtime check
+
+The existing `WaveOverhangs_API_Probe.py` defines a script capability and a slicing-pipeline capability in one module. Its source structure is consistent with the API in `af2ffb8c`.
 
 A new minimal `Plugin_Load_Probe.py` is provided separately. It deliberately imports only `orca` and registers only one Script capability. This isolates module import and capability registration from the slicing API. Its markers distinguish:
 1. module import;
@@ -69,4 +84,4 @@ A new minimal `Plugin_Load_Probe.py` is provided separately. It deliberately imp
 3. capability `on_load()`;
 4. manual `execute()`.
 
-The next manual test is to install this single `.py` file as a local plugin through OrcaSlicer's Plugins window, confirm the capability appears, and click Run. If it fails, collect both the main OrcaSlicer session log and the corresponding `python_*.log` file from `data_dir()/log/`.
+Install this single `.py` file as a local plugin through OrcaSlicer's Plugins window, confirm the capability appears, and click Run. Then collect the corresponding `python_*.log` file from `data_dir()/log/` and, if the plugin is not shown or reports an error, the Plugins dialog's Diagnostics details as well.
