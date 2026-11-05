@@ -41,7 +41,32 @@ class FakePiece:
         return [] if self is other else [self]
 
 
+class FakeSurface:
+    def __init__(self, internal, bridge):
+        self._internal = internal
+        self._bridge = bridge
+
+    def is_internal(self):
+        return self._internal
+
+    def is_bridge(self):
+        return self._bridge
+
+
 class WavefrontClippingTests(unittest.TestCase):
+    def test_native_bridge_surfaces_are_not_wave_candidates(self):
+        # Orca's Surface::is_internal() includes stInternalBridge.
+        bridge = FakeSurface(internal=True, bridge=True)
+        self.assertFalse(bridge.is_internal() and not bridge.is_bridge())
+
+    def test_internal_sparse_fill_remains_a_wave_candidate(self):
+        sparse = FakeSurface(internal=True, bridge=False)
+        self.assertTrue(sparse.is_internal() and not sparse.is_bridge())
+
+    def test_external_surfaces_are_not_wave_candidates(self):
+        external = FakeSurface(internal=False, bridge=False)
+        self.assertFalse(external.is_internal() and not external.is_bridge())
+
     def test_fully_inside_ring_keeps_original_vertices(self):
         ring = Ring([(0, 0), (100, 0), (100, 100), (0, 100)])
         paths = _clip_ring_to_region(ring, [Rect(-10, -10, 110, 110)], 5, Point)
