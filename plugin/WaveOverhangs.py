@@ -446,6 +446,15 @@ class WaveOverhangsPipeline(orca.slicing.SlicingPipelineCapabilityBase):
         if not instance.is_printable():
             return orca.ExecutionResult.success("Wave Overhangs: skipped; model instance is not printable")
         matrix = ctx.object.trafo()
+        # A planar XY emitter cannot represent belt/tilted transforms where X/Y
+        # depend on Z or Z depends on X/Y. Refuse these rather than flattening them.
+        if (abs(float(matrix[0][2])) > 1e-8 or
+                abs(float(matrix[1][2])) > 1e-8 or
+                abs(float(matrix[2][0])) > 1e-8 or
+                abs(float(matrix[2][1])) > 1e-8):
+            return orca.ExecutionResult.success(
+                "Wave Overhangs: skipped; non-planar object transform is unsupported"
+            )
 
         scale = 1.0 / float(orca.slicing.unscale(1))
         spacing = int(round(cfg["line_spacing_mm"] * scale))
