@@ -51,14 +51,14 @@ Source:
 
 ## 4. Consequence for Wave Overhangs
 
-The Wave Overhangs algorithm generates wavefront polylines and uses them as extrusion toolpaths. The public Python API in `af2ffb8c` can alter slice and fill geometry before toolpath generation, but it does not expose writable extrusion-path/entity collections.
+The Python API cannot insert arbitrary native ExtrusionPath entities into OrcaSlicer's read-only extrusion tree. However, source revision af2ffb8c exposes two plugin hooks that together provide a plugin-only route:
 
-Therefore:
-- A Python-only plugin can modify the native slice geometry before perimeter generation; this is explicitly supported by the bound `SurfaceCollection` mutators and the official sample.
-- A Python-only plugin still cannot directly insert or replace arbitrary generated extrusion paths through the current extrusion-tree bindings.
-- The first implementation experiment should be a geometry-level prototype at `Step.posSlice`: alter only the relevant overhang-facing contour segments so the normal perimeter generator produces the desired wave-shaped toolpaths.
-- This approach is viable only if it preserves the intended Wave Overhangs geometry, flow, speed, cooling, wall ordering, support and neighboring-layer behavior. Those properties must be tested; they must not be assumed.
-- A C++ bridge/core change is needed only if the required wave path cannot be expressed safely through slice geometry, or if exact per-path extrusion parameters/order require direct extrusion-entity control. Do not choose that route before the geometry prototype is evaluated.
+- At Step.posPrepareInfill, edit LayerRegion.fill_surfaces before make_fills. This allows the plugin to remove the area occupied by generated wavefronts from ordinary infill.
+- At Step.psGCodePostProcess, edit the exported G-code file in place. This allows the plugin to emit the corresponding wavefront extrusion moves without changing the slicer binary.
+
+The current development build implements a first, deliberately limited version of this approach: internal-fill overhang detection, anchored offset propagation, covered-area subtraction, and export-stage G-code insertion. It is not feature-complete or production-validated. The full reference algorithm still has bridgeability selection, narrow-neck splitting, path joining modes, and corner tapering to port.
+
+A fork or native C++ integration is therefore not required for the current plugin-only development route. The G-code post-process output is not reflected in OrcaSlicer's G-code preview, and unsupported printer modes must be rejected rather than guessed.
 
 ## 5. Correct interpretation of the user's log
 
