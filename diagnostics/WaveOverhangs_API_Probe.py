@@ -291,6 +291,7 @@ def _compact_log_summary(report, report_path, write_error):
 
 
 _PIPELINE_REPORTED_STEPS = set()
+_DIAGNOSTIC_FILE_INITIALIZED = False
 _GEOMETRY_STEPS = ("posSlice", "posPerimeters", "posInfill")
 
 
@@ -384,9 +385,11 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
 
             is_geometry_step = any(token in step_key for token in _GEOMETRY_STEPS)
             if is_geometry_step:
+                global _DIAGNOSTIC_FILE_INITIALIZED
                 report["geometry_inspection"] = _inspect_pipeline_geometry(ctx, step)
-                reset_file = any(token in step_key for token in ("posSlice",))
+                reset_file = not _DIAGNOSTIC_FILE_INITIALIZED
                 report_path, write_error = _write_diagnostic_report(report, reset=reset_file)
+                _DIAGNOSTIC_FILE_INITIALIZED = True
                 summary = _compact_log_summary(report, report_path, write_error)
                 message = "[WAVE_OVERHANGS_API_PROBE_SUMMARY] " + json.dumps(
                     summary, ensure_ascii=False, separators=(",", ":")
