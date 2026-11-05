@@ -14,7 +14,7 @@ class GCodeEmitterTests(unittest.TestCase):
         self.assertIn("M82 ; Wave Overhangs: restore absolute extrusion", result)
         self.assertIn("G92 E5 ; Wave Overhangs: restore absolute E coordinate", result)
         self.assertIn("G0 X10 Y10 F7200 ; Wave Overhangs: restore XY position", result)
-        self.assertIn("G1 F1200 ; Wave Overhangs: restore feedrate", result)
+        self.assertIn("G1 F900 ; Wave Overhangs: restore feedrate", result)
         self.assertLess(result.index("G1 Z0.2 F900"),
                         result.index(";TYPE:Wave Overhangs"))
         self.assertLess(result.index("G92 E5 ; Wave Overhangs"),
