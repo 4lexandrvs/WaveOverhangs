@@ -16,7 +16,7 @@ The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 
 ## Implemented in this development build
 
-- Anchoring band derived from the lower layer's geometry.
+- Narrow seed band reconstructed from the boundary of slightly expanded lower-layer anchors; this approximates the reference's open ClipperZ seed contours using native ExPolygon offsets and differences.
 - Initial processing is restricted to internal fill surfaces; top/bottom skins and bridge surfaces keep OrcaSlicer's native strategy.
 - Repeated polygon-offset propagation at configurable wave spacing.
 - Smart Bridgeability: waves are selected when either at least 20% of overhang area lies outside the anchor convex hull or the minimum unsupported-boundary projection reaches 20% of the perimeter; regions with holes always qualify. Boundary clipping is sampled at a configurable geometric resolution.
@@ -29,8 +29,7 @@ The adaptation preserves attribution and is licensed under AGPL-3.0-or-later.
 ## Not yet implemented / not production-ready
 
 - ZigZag joining and corner-aware spacing taper from the reference.
-- ZigZag joining and corner-aware spacing taper from the reference.
-- Exact native polyline clipping; the Python port uses bounded segment sampling.
+- Exact ClipperZ seed extraction and native polyline clipping; the Python port reconstructs a narrow seed band and uses bounded segment sampling. This is geometrically approximate, especially at tight concavities and closely spaced anchor islands.
 - Full validation of all printer start/end scripts, firmware modes, pressure advance, and retraction behavior.
 - Multi-object, multi-instance, and multi-tool support.
 
