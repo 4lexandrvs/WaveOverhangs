@@ -56,7 +56,7 @@ The Python API cannot insert arbitrary native ExtrusionPath entities into OrcaSl
 - At Step.posPrepareInfill, edit LayerRegion.fill_surfaces before make_fills. This allows the plugin to remove the area occupied by generated wavefronts from ordinary infill.
 - At Step.psGCodePostProcess, edit the exported G-code file in place. This allows the plugin to emit the corresponding wavefront extrusion moves without changing the slicer binary.
 
-The current development build implements a first, deliberately limited version of this approach: internal-fill overhang detection, anchored offset propagation, covered-area subtraction, and export-stage G-code insertion. It is not feature-complete or production-validated. The full reference algorithm still has bridgeability selection, narrow-neck splitting, path joining modes, and corner tapering to port.
+The current development build implements a limited version of this approach: internal-fill overhang detection, Smart Bridgeability selection heuristics, morphology-based narrow-neck splitting, anchored offset propagation, covered-area subtraction, and export-stage G-code insertion. Seed extraction and boundary clipping remain approximations; ZigZag joining, Smart path orientation, exact slit construction, and corner-aware spacing taper are not ported. The plugin is not feature-complete or production-validated.
 
 A fork or native C++ integration is therefore not required for the current plugin-only development route. The G-code post-process output is not reflected in OrcaSlicer's G-code preview, and unsupported printer modes must be rejected rather than guessed.
 
