@@ -70,47 +70,68 @@ def _point_inside(point, polygons):
 def _clip_ring_to_region(ring, clip_region, sample_step, point_factory):
     """Clip a closed polygon ring to an ExPolygon region by segment sampling.
 
-    The Python bindings expose polygon booleans but not the native intersection_pl
-    helper. Sampling is conservative and bounded by sample_step. Returned paths
-    are open polylines, split wherever the ring leaves the clip region.
+    Fully-inside segments retain their original endpoints; only boundary-crossing
+    segments are sampled. This keeps straight wavefronts compact in exported G-code.
     """
     points = list(ring.points)
     if len(points) < 3:
         return []
     paths = []
     current = []
+
+    def flush():
+        nonlocal current
+        if len(current) >= 2:
+            paths.append(current)
+        current = []
+
+    def append_segment(a, b):
+        if not current:
+            current.append(a)
+        elif current[-1] != a:
+            flush()
+            current.append(a)
+        if current[-1] != b:
+            current.append(b)
+
     for index, start in enumerate(points):
         end = points[(index + 1) % len(points)]
-        dx = float(end.x - start.x)
-        dy = float(end.y - start.y)
+        ax, ay = float(start.x), float(start.y)
+        bx, by = float(end.x), float(end.y)
+        dx, dy = bx - ax, by - ay
         length = math.hypot(dx, dy)
+
+        # Fast path: preserve the native segment if it stays inside the inset.
+        probes = (0.0, 0.25, 0.5, 0.75, 1.0)
+        fully_inside = True
+        for t in probes:
+            probe = point_factory(int(round(ax + dx * t)),
+                                  int(round(ay + dy * t)))
+            if not _point_inside(probe, clip_region):
+                fully_inside = False
+                break
+        if fully_inside:
+            append_segment((int(round(ax)), int(round(ay))),
+                           (int(round(bx)), int(round(by))))
+            continue
+
         steps = max(1, int(math.ceil(length / max(1.0, sample_step))))
         for step in range(steps):
             t0 = step / steps
             t1 = (step + 1) / steps
-            ax = float(start.x) + dx * t0
-            ay = float(start.y) + dy * t0
-            bx = float(start.x) + dx * t1
-            by = float(start.y) + dy * t1
-            midpoint = point_factory(int(round((ax + bx) * 0.5)),
-                                     int(round((ay + by) * 0.5)))
+            sx = ax + dx * t0
+            sy = ay + dy * t0
+            ex = ax + dx * t1
+            ey = ay + dy * t1
+            midpoint = point_factory(int(round((sx + ex) * 0.5)),
+                                     int(round((sy + ey) * 0.5)))
             if _point_inside(midpoint, clip_region):
-                a = (int(round(ax)), int(round(ay)))
-                b = (int(round(bx)), int(round(by)))
-                if not current:
-                    current.append(a)
-                elif current[-1] != a:
-                    if len(current) >= 2:
-                        paths.append(current)
-                    current = [a]
-                if current[-1] != b:
-                    current.append(b)
-            elif current:
-                if len(current) >= 2:
-                    paths.append(current)
-                current = []
-    if len(current) >= 2:
-        paths.append(current)
+                append_segment((int(round(sx)), int(round(sy))),
+                               (int(round(ex)), int(round(ey))))
+            else:
+                flush()
+
+    flush()
     return paths
 
 
