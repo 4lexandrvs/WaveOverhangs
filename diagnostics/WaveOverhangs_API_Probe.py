@@ -5,7 +5,7 @@
 # name = "Wave Overhangs (API Probe)"
 # description = "Read-only diagnostic for OrcaSlicer 2.5.0 plugin and slicing-pipeline APIs."
 # author = "WaveOverhangs contributors"
-# version = "0.6.0"
+# version = "0.7.0"
 # ///
 
 import inspect
@@ -350,7 +350,7 @@ def _result_message(marker, report, limit=11500):
 def _write_diagnostic_report(report, reset=False):
     """Write full JSONL diagnostics to the OS temporary directory."""
     path = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()),
-                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.6.0.jsonl")
+                        "OrcaSlicer", "log", "WaveOverhangs_API_Probe_0.7.0.jsonl")
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         mode = "w" if reset else "a"
@@ -365,7 +365,7 @@ def _write_diagnostic_report(report, reset=False):
 def _compact_log_summary(report, report_path, write_error):
     geometry = report.get("geometry_inspection", {})
     summary = {
-        "plugin_version": "0.6.0",
+        "plugin_version": "0.7.0",
         "step": report.get("step"),
         "context_type": report.get("context_type"),
         "print_type": report.get("print_type"),
@@ -410,7 +410,7 @@ class WaveOverhangsApiReport(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         report = {
             "plugin": "Wave Overhangs API Probe",
-            "plugin_version": "0.6.0",
+            "plugin_version": "0.7.0",
             "orca_version": _safe_getattr(orca, "__version__"),
             "orca_type": _safe_type(orca),
             "orca_module_symbols": _safe_dir(orca),
