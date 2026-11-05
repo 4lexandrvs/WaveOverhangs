@@ -461,7 +461,7 @@ class WaveOverhangsPipelineProbe(orca.slicing.SlicingPipelineCapabilityBase):
             step_key = str(step)
             report = {
                 "plugin": "Wave Overhangs Pipeline Probe",
-                "plugin_version": "0.6.0",
+                "plugin_version": "0.7.0",
                 "context_type": _safe_type(ctx),
                 "step": step,
                 "context_symbols": _safe_dir(ctx),
