@@ -170,6 +170,23 @@ def split_narrow_necks(region, minimum_width):
     return disjoint if len(disjoint) > 1 else [region]
 
 
+def smart_bridgeability_allows(overhang_area, outside_hull_area,
+                               has_holes=False, threshold=0.20):
+    """Apply the reference algorithm's convex-hull bridgeability gate.
+
+    Regions containing holes always qualify. Otherwise, waves are retained
+    when no more than threshold of the overhang lies outside the convex hull
+    of its anchor regions. The separate unsupported-boundary projection test
+    from the reference is not yet ported.
+    """
+    if has_holes:
+        return True
+    area = float(overhang_area)
+    if area <= 0:
+        return False
+    return float(outside_hull_area) / area <= float(threshold)
+
+
 def generate_wavefronts(subject, lower_slices, spacing, line_width,
                         seed_reach, point_factory, max_iterations=160,
                         min_area_growth=0.0, minimum_wave_width=0):
