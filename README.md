@@ -166,6 +166,7 @@ The roadmap is ordered by dependency and risk. A later phase must not be treated
 - [ ] Compare anchor bands and seed behavior against the reference implementation.
 - [ ] Quantify the effect of sampling resolution and seed epsilon on narrow/tight geometry.
 - [ ] Add regression fixtures for every runtime geometry failure found.
+- [ ] Add an optional SVG/JSON diagnostic export for overhang regions, expanded anchors, seed bands, wavefronts, covered areas, and residual infill geometry.
 
 **Exit criteria:** repeatable geometry results on the supported one-object test envelope, with no unexplained loss or overlap of infill.
 
