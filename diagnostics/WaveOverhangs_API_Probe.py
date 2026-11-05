@@ -88,6 +88,13 @@ def _inspect_object(value, candidate_attrs, depth=0):
     return result
 
 
+def _safe_length(value):
+    try:
+        return len(value)
+    except Exception as exc:
+        return "<unavailable: {}>".format(exc)
+
+
 def _inspect_collection(value, item_attrs, label, max_items=2):
     if value is None:
         return {"label": label, "is_none": True}
@@ -96,7 +103,7 @@ def _inspect_collection(value, item_attrs, label, max_items=2):
         "type": _safe_type(value),
         "repr": _safe_repr(value),
         "symbols": _safe_dir(value)[:100],
-        "length": _safe_getattr(value, "__len__"),
+        "length": _safe_length(value),
         "mutation_method_hints": [
             name for name in ("append", "extend", "insert", "add", "set",
                               "clear", "pop", "remove", "erase")
@@ -150,7 +157,7 @@ def _inspect_layers(owner, attr_name, max_layers=2):
         "type": _safe_type(collection),
         "repr": _safe_repr(collection),
         "symbols": _safe_dir(collection)[:100],
-        "length": _safe_getattr(collection, "__len__"),
+        "length": _safe_length(collection),
         "sample": [],
     }
     try:
