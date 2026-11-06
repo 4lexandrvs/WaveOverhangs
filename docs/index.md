@@ -16,8 +16,8 @@ title: Wave Overhangs
 
 - [README проекта](https://github.com/4lexandrvs/WaveOverhangs/blob/main/README.md) — что реализовано, параметры, ограничения и инструкция по проверке.
 - [Roadmap](https://github.com/4lexandrvs/WaveOverhangs/blob/main/README.md#roadmap) — план работ от runtime-проверки до готовности релиза.
-- [Implementation notes](IMPLEMENTATION_NOTES) — архитектура, алгоритм, G-code и известные приближения.
-- [OrcaSlicer API findings](API_FINDINGS) — результаты исследования Python API OrcaSlicer 2.5.0.
+- [Implementation notes](IMPLEMENTATION_NOTES.html) — архитектура, алгоритм, G-code и известные приближения.
+- [OrcaSlicer API findings](API_FINDINGS.html) — результаты исследования Python API OrcaSlicer 2.5.0.
 - [Исходный код плагина](https://github.com/4lexandrvs/WaveOverhangs/blob/main/plugin/WaveOverhangs.py).
 - [Тесты](https://github.com/4lexandrvs/WaveOverhangs/tree/main/tests).
 
