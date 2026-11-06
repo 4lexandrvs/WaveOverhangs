@@ -235,3 +235,152 @@ The port is based on the original Wave Overhangs work and related arc-overhang r
 - Related reference: [PrusaSlicer-WaveOverhangs](https://github.com/stmcculloch/PrusaSlicer-WaveOverhangs)
 
 This adaptation retains attribution and is licensed under **AGPL-3.0-or-later**.
+
+
+## Technical design details
+
+This section records the implementation decisions and API constraints in one place so the repository can be understood from its root README without having to reconstruct the design from commit history.
+
+### Why the plugin uses two pipeline hooks
+
+OrcaSlicer 2.5.0 exposes mutable polygonal fill surfaces to Python, but does not expose writable native extrusion-entity collections. The plugin therefore separates the operation into two stages:
+
+- **Geometry stage — `posPrepareInfill`:** determine which part of an eligible internal fill surface is unsupported, generate the wave paths as numeric coordinates, and remove the area covered by those paths from the fill surfaces consumed by the later infill generator.
+- **Export stage — `psGCodePostProcess`:** locate the physical layer Z move in the finished G-code and insert the saved paths as extrusion moves.
+
+The geometry objects belong to Orca's temporary slicing graph and are not kept after the callback. Only ordinary Python numeric values (XY point arrays and layer heights) are retained for the export callback. This avoids depending on native geometry objects after their valid pipeline stage.
+
+This is deliberately a plugin-only compromise. It avoids a slicer fork, but it also means the generated paths are absent from the slicer's preview and that geometry replacement and G-code insertion must be validated independently.
+
+### Geometry processing, in execution order
+
+1. **Check the supported job envelope.** The current implementation accepts one print object, one printable model instance, one extruder, planar XY transforms, ordinary XYZ positioning, and non-volumetric extrusion. Unsupported configurations are rejected rather than silently approximated.
+2. **Transform coordinates.** XY coordinates are converted from object space into print/world space using the print object's transform. Transforms in which XY depends on Z or Z depends on XY are rejected.
+3. **Select candidate surfaces.** Only internal, non-bridge fill surfaces are considered. External walls, top/bottom skins, and native bridge surfaces remain under Orca's control. The explicit bridge exclusion is important: Orca's `Surface::is_internal()` classification also includes `stInternalBridge`.
+4. **Find unsupported area.** For a current internal fill surface, the unsupported portion is approximated by subtracting the previous layer's merged slices from the current surface.
+5. **Build anchors.** Lower-layer geometry is expanded by the configured anchor reach. This compensates for the gap between the lower layer's printable footprint and the inset internal infill region.
+6. **Apply Smart Bridgeability selection.** Eligible overhang regions are filtered using the criteria below. This is a heuristic port, not a replacement for Orca's native bridge detection.
+7. **Construct seed bands.** The current implementation derives a narrow polygon band around slightly expanded lower-layer anchor boundaries. This approximates the reference's open ClipperZ seed polylines; it does not reproduce their exact topology or source/target path IDs.
+8. **Propagate wavefronts.** Repeated polygon offsets advance the wavefronts at the configured line spacing, bounded by the maximum iteration count and minimum area-growth stop condition.
+9. **Clip paths.** Wave contours are clipped to an inset overhang boundary. Segments wholly inside the clipping region retain their original vertices; segments crossing the boundary are clipped with bounded point sampling.
+10. **Split narrow necks.** The candidate covered region is eroded and regrown as independent components. A narrow connection that disappears during erosion is not bridged back into the wave region; it remains available to ordinary infill.
+11. **Remove duplicate infill coverage.** The resulting wave-covered envelope is subtracted from the original fill surface. The live `SurfaceCollection` is rebuilt using its mutator methods so the later `make_fills` stage sees the residual fill area.
+12. **Save export data.** Generated XY paths and their exact layer heights are stored as plain numeric data for the post-processing stage.
+
+### Smart Bridgeability heuristic
+
+The implementation uses the following OR condition for an eligible internal-fill overhang region:
+
+- The fraction of overhang area outside the convex hull of its anchor regions is at least **20%**; or
+- The minimum unsupported-boundary projection cost divided by the measured perimeter is at least **20%**; or
+- The region contains one or more holes (holes always qualify).
+
+If neither numeric criterion reaches its threshold and the region has no holes, wave generation is skipped.
+
+The projection-cost calculation tests candidate directions derived from unsupported boundary segments. For each candidate direction it sums the absolute projection of the unsupported segments and selects the minimum cost. No unsupported segments yields zero cost. The current plugin approximates the unsupported segments by sampling the overhang boundary against expanded anchors; the reference implementation uses a more exact Clipper-based boundary operation. The thresholds and metric are therefore implemented, but their input geometry is not yet bit-for-bit equivalent to the reference.
+
+### Narrow-neck handling
+
+The current morphology-based split is intended to avoid allowing a thin bridge between two broad regions to make the entire connected shape eligible for wave coverage:
+
+- Erode the candidate region by approximately half the configured minimum wave width.
+- Treat disconnected eroded cores independently.
+- Regrow each core and clip it to the original candidate region.
+- Leave material that does not belong to a surviving core for ordinary infill.
+
+This is an approximation of the reference's slit/narrow-neck handling, not an exact port of its construction. The default threshold is `minimum_wave_width_mm = 0.70`.
+
+### G-code insertion and state restoration
+
+The export hook groups generated paths by layer height and searches for the matching `;LAYER_CHANGE` / `;Z:` metadata and corresponding physical Z movement. It inserts the wave extrusion after that physical move, rather than relying on the comment alone.
+
+For each inserted path, the emitter calculates filament E from a rounded-bead cross-section and the configured filament cross-sectional area. It tracks and restores the relevant modal state:
+
+- absolute or relative E mode;
+- absolute E coordinate, using the appropriate mode changes and `G92` restoration where required;
+- current XY position;
+- previous feedrate.
+
+The implementation fails closed for detected unsupported states including `M200` volumetric extrusion, tool changes to T1 or higher, `G91` relative XYZ motion, unknown XY at the insertion point, missing exact layer height, and invalid extrusion dimensions. This list is not proof that every printer-specific G-code sequence is handled safely; the runtime emitter still needs direct testing against real Orca exports and supported printer start/end scripts.
+
+## OrcaSlicer API findings verified for the target build
+
+**Validation target:** OrcaSlicer 2.5.0 source/build revision `af2ffb8c`.
+
+The following are source/API findings, not claims that the live plugin has completed end-to-end runtime validation:
+
+- The embedded Python API exposes `orca.slicing.SlicingPipelineCapabilityBase`, the slicing `Step` enum, and capability registration.
+- The plugin loader expects a module to register at least one capability. A message that a Python printer-agent plugin has no `PrinterConnection` capability is not, by itself, evidence that a slicing-pipeline plugin failed to register; these are different capability types.
+- `Step.posPrepareInfill` runs after `prepare_infill` and before `make_fills`. Changes to the live `LayerRegion.fill_surfaces` at this stage can therefore affect subsequent ordinary infill generation.
+- `LayerRegion.fill_surfaces` and `LayerRegion.slices` are exposed as mutable `SurfaceCollection` instances. The collection mutators include `clear()`, `set()`, and `append()`. Mutating a Python list returned by a getter is not a substitute for calling the native collection mutators.
+- Bound `ExPolygon` geometry exposes polygon offset and boolean operations used by the plugin, including intersection, difference, and union-related operations.
+- `Step.psGCodePostProcess` is an export/post-processing hook. At that stage `ctx.print` and `ctx.object` are not available; `ctx.gcode_path` is the file path used to edit the exported G-code.
+- Native extrusion entity collections are read-only through the Python bindings. The plugin therefore cannot simply append a native `ExtrusionPath` to Orca's extrusion tree.
+- G-code injected after slicing is not reflected in Orca's toolpath/G-code preview.
+
+Useful source references for the target revision:
+
+- [PythonPluginBridge.cpp](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/plugin/PythonPluginBridge.cpp)
+- [PluginLoader.cpp](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/plugin/PluginLoader.cpp)
+- [SlicingPipelinePluginCapability.cpp](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/plugin/pluginTypes/slicingPipeline/SlicingPipelinePluginCapability.cpp)
+- [SlicingPipelinePluginCapability.hpp](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/plugin/pluginTypes/slicingPipeline/SlicingPipelinePluginCapability.hpp)
+- [PluginHostSlicing.cpp](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/src/slic3r/plugin/host/PluginHostSlicing.cpp)
+- [Official Inset Every Slice sample](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/sandboxes/orca_inset_plugin_any.py)
+- [Official slicing-pipeline binding tests](https://github.com/OrcaSlicer/OrcaSlicer/blob/af2ffb8c/tests/slic3rutils/test_slicing_pipeline_bindings.cpp)
+
+For a deeper record of the source investigation, see [docs/API_FINDINGS.md](docs/API_FINDINGS.md). The implementation-level notes remain in [docs/IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md).
+
+## Debugging and diagnostic evidence
+
+When investigating plugin loading or runtime behavior, distinguish the main Orca debug log from Python's separate stdout/stderr log stream. Earlier probe versions used `print()`, which wrote the report to a separate `python_*.log` file. The API probe was later changed to include its compact JSON report in `orca.ExecutionResult.success(message)`, which is recorded in the main debug log for the relevant plugin execution path.
+
+A log entry stating that a Python printer-agent plugin has no registered `PrinterConnection` capability can be normal for a plugin that is intended to register a slicing-pipeline capability. Diagnose registration using the plugin's actual capability type and its execution messages, not that printer-agent line in isolation.
+
+The read-only `WaveOverhangs_API_Probe` is intended to inspect API availability and runtime object metadata. Its safe probe mode does not invoke geometry mutators such as `set()`, `append()`, `clear()`, `offset()`, or `make_slices()`. Do not treat a read-only API probe as proof that the production plugin's geometry mutation works.
+
+## Test coverage: what current CI proves and what it does not
+
+The repository checks currently provide three kinds of evidence:
+
+1. **Syntax/import compilation:** Python source files compile under the CI Python version.
+2. **Standalone unit tests:** geometry helper behavior, sampled clipping, Smart Bridgeability numeric criteria, bridge-surface filtering, mocked narrow-neck splitting, and standalone G-code emitter behavior.
+3. **Source/API investigation:** OrcaSlicer 2.5.0 source revision `af2ffb8c` was inspected to establish which hooks and mutable geometry operations are exposed.
+
+Current CI does **not** prove:
+
+- that the plugin installs and registers correctly in a running OrcaSlicer GUI;
+- that the inlined runtime geometry engine successfully mutates native Orca `SurfaceCollection` objects;
+- that the inlined runtime G-code emitter behaves identically to the standalone helper;
+- that the generated toolpaths are geometrically or thermally suitable for a particular printer/material;
+- that the inserted paths are collision-free or produce a successful physical print.
+
+The standalone files `plugin/wavefront_engine.py` and `plugin/gcode_emitter.py` intentionally mirror code inlined in `plugin/WaveOverhangs.py`. They are test/development copies, not runtime imports. A test passing in one of those files must not be described as direct runtime-plugin coverage.
+
+## Current support matrix
+
+| Capability or setup | Current status |
+|---|---|
+| Stock OrcaSlicer 2.5.0 plugin architecture | Targeted by source/API investigation; live runtime validation still pending |
+| Single print object | Intended supported envelope; runtime validation pending |
+| One printable model instance | Intended supported envelope; runtime validation pending |
+| One extruder | Intended supported envelope; runtime validation pending |
+| Planar XY object transform | Supported by current transform checks; runtime validation pending |
+| Internal non-bridge fill surfaces | Implemented candidate filter |
+| Native bridge surfaces, external walls, top/bottom skins | Deliberately left to Orca |
+| Smart Bridgeability selection | Implemented heuristic; sampled input geometry |
+| Narrow-neck split | Implemented morphology approximation |
+| Exact reference open-polyline seed extraction | Not implemented; polygon-band approximation used |
+| ZigZag joining, Smart path orientation, corner taper | Not implemented |
+| Multiple objects or instances | Unsupported |
+| Multi-tool / T1+ | Rejected |
+| Volumetric extrusion / M200 | Rejected |
+| Relative XYZ / G91 | Rejected |
+| Non-planar transforms | Rejected |
+| Orca preview of injected paths | Not available; inspect exported G-code |
+
+## Project status and release policy
+
+The codebase is an experimental, partial plugin-only port. There are meaningful implemented components—pipeline integration, internal-fill overhang detection, anchored offset propagation, Smart Bridgeability selection, morphology-based narrow-neck splitting, residual-fill subtraction, and G-code insertion—but algorithm parity and runtime safety are not established.
+
+The feature remains disabled by default. Keep it disabled for normal slicing. Use disposable test projects and exports while validating it. Do not print with the feature enabled until the live Orca runtime, exported G-code, and supervised physical test phases have passed.
+
